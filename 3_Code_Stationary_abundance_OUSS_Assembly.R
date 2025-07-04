@@ -211,6 +211,7 @@ estimate_ouss_parallel <- function(data, n_cores = 6) {
   results_list <- foreach(combo = combos, .packages = c("dplyr", "MASS")) %dopar% {
     i <- combo$scientific_name
     m <- combo$cell
+    
     timeseries <- data |>
       filter(scientific_name == i, cell == m) |>
       group_by(Time.t) |>
@@ -224,45 +225,57 @@ estimate_ouss_parallel <- function(data, n_cores = 6) {
     fguess <- guess_ouss(yt = yt, tt = tt)
     ouss_im <- ouss_reml(yt = yt, tt = tt, fguess = fguess)
     
-    mu_hat <- exp(ouss_im$remls[1])
+    mu_hat <- ouss_im$remls[1]
     theta_hat <- ouss_im$remls[2]
     betasqr_hat <- ouss_im$remls[3]
     tausqrt_hat <- ouss_im$remls[4]
+    Var_Xinf <- betasqr_hat/(2*theta_hat)   # Eq 11 Dennis & Ponciano Ecology 2014
     
-    data.frame(scientific_name = i, cell = m,
+    if(Var_Xinf < 2){
+      omega_hat <- exp(mu_hat + Var_Xinf/2) # Eq 49 Dennis et al. Ecol Monogr 2006
+    } else {
+      omega_hat <- exp(mu_hat)              # Eq 10 Dennis & Ponciano Ecology 2014
+    }
+    
+    data.frame(scientific_name = i, 
+               cell = m,
+               omega_hat = omega_hat,
+               tausqrt_hat = tausqrt_hat,
                mu_hat = mu_hat,
                theta_hat = theta_hat,
                betasqr_hat = betasqr_hat,
-               tausqrt_hat = tausqrt_hat)
+               Var_Xinf = Var_Xinf)
   }
   
   stopCluster(cl)
   bind_rows(results_list)
 }
 
-# Read dataset path from command line
+# Read dataset path from command line ####
 args <- commandArgs(trailingOnly = TRUE)
 dataset_path <- args[1]
 
-# Load dataset
+# Load dataset and name of region
 data <- readRDS(dataset_path)
+region <- tools::file_path_sans_ext(basename(dataset_path))
 
 # Run estimation
 param_df <- estimate_ouss_parallel(data, n_cores = 6)
+
+saveRDS(param_df, paste0("Completeness_data_Islands/", region, "_OUSS_parms_df.rds"))
 
 # Join and save
 data <- data |>
   left_join(param_df, by = c("scientific_name", "cell"))
 
 # Save results
-region <- tools::file_path_sans_ext(basename(dataset_path))
-saveRDS(data, paste0("Completeness_data_Islands/", region, "_OUSS_parms.rds"))
+saveRDS(data, paste0("Completeness_data_Islands/", region, "_OUSS_with_parms.rds"))
 
 # Create cell assembly
 cell_assembly <- data |>
-  dplyr::select(cell, scientific_name, mu_hat) |>
+  dplyr::select(cell, scientific_name, omega_hat) |>
   pivot_wider(names_from = cell,
-              values_from = mu_hat,
+              values_from = omega_hat,
               values_fill = 0,
               values_fn = mean)
 
