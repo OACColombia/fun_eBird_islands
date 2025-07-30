@@ -462,8 +462,8 @@ global.carib.pca.fig <- ggplot(carib.pca.values) +
                                 "#35B779",
                                 "#21908C",
                                 "#A1A1A1"))+
-  #  scale_x_continuous(limits = c(-9,8))+
-  #  scale_y_continuous(limits = c(-4,6))+
+  scale_x_continuous(limits = c(-10.8,12.3))+
+  scale_y_continuous(limits = c(-10.9,7))+
   coord_fixed()+
   geom_segment(data = carib.pca.loadings, 
                size = 0.25,
@@ -475,6 +475,7 @@ global.carib.pca.fig <- ggplot(carib.pca.values) +
                   aes(x = PC1*12, y = PC2*10, label = Variables)) + 
   labs(x = "PC1 (44.91%)",
        y = "PC2 (12.45%)",
+       title = expression(bold("(d)")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
@@ -670,7 +671,7 @@ orinma_cwm <- islands_cwm_mu |>
                           "Philippines",
                           "Sunda islands")) |>
   # bring back the mean value of longitude for each cell
-  left_join(spp_cell_df |> 
+  left_join(spp_cell_df_func |> 
               dplyr::select(cell,longitude, latitude) |> 
               group_by(cell) |> 
               summarize(longitude = mean(longitude),
@@ -713,8 +714,8 @@ global.orinma.pca.fig <- ggplot(orinma.pca.values) +
                                 "#A1A1A1",
                                 "#F6A97A",
                                 "#F66D7A"))+
-  #  scale_x_continuous(limits = c(-9,7))+
-  #  scale_y_continuous(limits = c(-5,4))+
+  scale_x_continuous(limits = c(-10.8,12.3))+
+  scale_y_continuous(limits = c(-10.9,7))+
   coord_fixed()+
   geom_segment(data = orinma.pca.loadings, 
                size = 0.25,
@@ -726,6 +727,7 @@ global.orinma.pca.fig <- ggplot(orinma.pca.values) +
                   aes(x = PC1*12, y = PC2*10, label = Variables)) + 
   labs(x = "PC1 (47.53%)",
        y = "PC2 (14.62%)",
+       title = expression(bold("(e)")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
@@ -969,7 +971,7 @@ papuan_cwm <- islands_cwm_mu |>
                           "Mainland",
                           "Wallacea")) |> 
   # bring back the mean value of longitude for each cell
-  left_join(spp_cell_df |> 
+  left_join(spp_cell_df_func |> 
               dplyr::select(cell,longitude, latitude) |> 
               group_by(cell) |> 
               summarize(longitude = mean(longitude),
@@ -1013,8 +1015,8 @@ global.papuan.pca.fig <- ggplot(papuan.pca.values) +
                                 "#F0E442",
                                 "#009E73",
                                 "#D55E00"))+
-  scale_x_continuous(limits = c(-9,8))+
-  scale_y_continuous(limits = c(-5,5))+
+  scale_x_continuous(limits = c(-10.8,12.3))+
+  scale_y_continuous(limits = c(-10.9,7))+
   coord_fixed()+
   geom_segment(data = papuan.pca.loadings, 
                size = 0.25,
@@ -1024,8 +1026,9 @@ global.papuan.pca.fig <- ggplot(papuan.pca.values) +
                colour = "black") +
   geom_text_repel(data = papuan.pca.loadings, 
                   aes(x = PC1*12, y = PC2*10, label = Variables)) + 
-  labs(x = "PC1 (52.55%)",
-       y = "PC2 (15.82%)",
+  labs(x = "PC1 (48.90%)",
+       y = "PC2 (15.12%)",
+       title = expression(bold("(f)")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
@@ -1221,9 +1224,6 @@ vanuatu.pca.density.fig <- ggMarginal(vanuatu.pca.fig,
 # Figure of global PCAs with density ####
 
 #Combine
-grid.arrange(global.pca.density.fig, global.carib.pca.density.fig,
-             global.orinma.pca.density.fig, global.papuan.pca.density.fig, 
-             ncol = 2)
 
 grid.arrange(global.carib.pca.density.fig,
              global.orinma.pca.density.fig, 
