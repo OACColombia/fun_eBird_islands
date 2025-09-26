@@ -7,37 +7,37 @@ library(tidyverse)
 library(ggExtra) # for ggMarginal() of the density plot
 library(gridExtra) #for grid.arrange()
 library(ggrepel) # for geom_text_repel()
-
 # gis
 library(sf)
-
 # phylogeny
 library(phytools); library(ape)
-
 # functional trait space
 library(funspace)
-
 # correlation plot
 library(corrplot)
 
 # Data from eBird records  ####
   # summarise sampling unit and convert to sf spatial object
 
-Caribbean_Spp_sf <- readRDS("Completeness_output/Caribbean_SS_Completeness.rds") |>
+Caribbean_Spp_sf <- readRDS("Completeness_data_Islands/Caribbean_OUSS_with_parms.rds") |>
+  # C_ouss |>
   group_by(scientific_name, cell) |>
-  summarise(latitude = mean(latitude, na.rm = T),
-            longitude = mean(longitude, na.rm = T),
-            mu_count = mean(mu_count, na.rm = T)) |>
+  summarise(latitude = mean(latitude, na.rm = TRUE),
+            longitude = mean(longitude, na.rm = TRUE),
+            mu_hat = mean(mu_hat, na.rm = TRUE),
+            omega_hat = mean(omega_hat, na.rm = TRUE)) |>
   as.data.frame() |>
   mutate(Meta.Archipelago = "Neotropical") |>
   st_as_sf(coords = c("longitude", "latitude"),
            crs = 4326)
 
-IndoPacific_Spp_sf <- readRDS("Completeness_output/IndoPacific_SS_Completeness.rds") |>
+IndoPacific_Spp_sf <- readRDS("Completeness_data_Islands/IndoPacific_OUSS_with_parms.rds") |>
+  # IP_ouss |>
   group_by(scientific_name, cell) |>
-  summarise(latitude = mean(latitude, na.rm = T),
-            longitude = mean(longitude, na.rm = T),
-            mu_count = mean(mu_count, na.rm = T)) |>
+  summarise(latitude = mean(latitude, na.rm = TRUE),
+            longitude = mean(longitude, na.rm = TRUE),
+            mu_hat = mean(mu_hat, na.rm = TRUE),
+            omega_hat = mean(omega_hat, na.rm = TRUE)) |>
   as.data.frame() |>
   mutate(Meta.Archipelago = "Indo.Pacific") |>
   st_as_sf(coords = c("longitude", "latitude"),
@@ -48,11 +48,6 @@ islands_spp_cells <- rbind(Caribbean_Spp_sf, IndoPacific_Spp_sf)
 # recover latitude and longitude
 islands_spp_cells$longitude <- st_coordinates(islands_spp_cells)[, 1]
 islands_spp_cells$latitude <- st_coordinates(islands_spp_cells)[, 2]
-
-# convert to dataframe
-islands_spp_cells_df <- islands_spp_cells |>
-  st_drop_geometry() |>
-  as.data.frame()
 
 # Polygons of the meta-archipelagos ####
 # Mainland in america polygon
@@ -140,11 +135,25 @@ islands_sf <- rbind(cont_isln_Car, gr_antilles, kalinago, lucayan,
 mainland_cells <- st_join(islands_spp_cells, 
                            mainland_sf, 
                            join = st_within)
-# 404047 cell-species rows
+# 404047 to 202321 cell-species rows 
+
+ggplot()+
+  geom_sf(data = mainland_cells)+
+  geom_point(data = mainland_cells |> filter(is.na(subregion)), 
+             aes(x = longitude, y = latitude),
+             color = "red", 
+             size = 0.05)+
+  geom_point(data = mainland_cells |> filter(!is.na(subregion)), 
+             aes(x = longitude, y = latitude),
+             color = "blue", 
+             size = 0.1)+
+  coord_sf(ylim=c(7,28),
+           xlim=c(-58,-92))+
+  theme_classic()
 
 #Filter only points within the mainland
-mainland_cells <- mainland_cells[!is.na(mainland_cells$OBJECTID_1), ]
-# 287022 observations (117025 should be in islands)
+mainland_cells <- mainland_cells[!is.na(mainland_cells$subregion), ]
+# 160839 observations
 
 #recover latitude and longitude
 mainland_cells$longitude <- st_coordinates(mainland_cells)[, 1]
@@ -159,11 +168,25 @@ spp_cell_mainland <- mainland_cells |>
 island_cells <- st_join(islands_spp_cells, 
                           islands_sf, 
                           join = st_within)
-# 404047 cell-species rows 
+# 202321 cell-species rows 
 
-#Filter only points within the mainland
-island_cells <- island_cells[!is.na(island_cells$OBJECTID_1), ]
-# 102780 (different than expected from Mainland! where are the 14245 remining?)
+ggplot()+
+  geom_sf(data = island_cells)+
+  geom_point(data = island_cells |> filter(is.na(subregion)), 
+             aes(x = longitude, y = latitude),
+             color = "red", 
+             size = 0.05)+
+  geom_point(data = island_cells |> filter(!is.na(subregion)), 
+             aes(x = longitude, y = latitude),
+             color = "blue", 
+             size = 0.1)+
+  coord_sf(ylim=c(7,28),
+           xlim=c(-58,-92))+
+  theme_classic()
+
+#Filter only points withOUT the mainland
+island_cells <- island_cells[!is.na(island_cells$subregion), ]
+# 32776 (different than expected from Mainland! where are the 8706 missed?)
 
 #recover latitude and longitude
 island_cells$longitude <- st_coordinates(island_cells)[, 1]
@@ -181,7 +204,9 @@ spp_cell_df <- spp_cell_mainland |>
 # some cells at edge or out of the subregions were removed 
   # (e.g. Fiji and Micronesia)
 
-saveRDS(spp_cell_df, "Species_in_cells_MetaArchipelagos.rds")
+# Save data for PCAs figures ####
+
+saveRDS(spp_cell_df, "Completeness_data_Islands/Species_in_cells_MetaArchipelagos.rds")
 
 # Functional traits databases ####
 
@@ -194,7 +219,7 @@ avonet <- read_csv("FunctionalTraits/AVONET_Raw_Data.csv") |>
 avonet_eBird <- read_csv("FunctionalTraits/AVONET2_eBird.csv") |> 
   dplyr::select(Species2, Mass, Trophic.Niche) |>
   rename(Species2_eBird = Species2) |>
-  # seven species had NA in Trophic.Niche. We asign based on BoW
+  # seven species had NA in Trophic.Niche. We adjusted based on BoW
   mutate(Trophic.Niche = ifelse(Species2_eBird == "Vanellus macropterus","Omnivore",
                          ifelse(Species2_eBird == "Ophrysia superciliosa","Granivore",
                          ifelse(Species2_eBird == "Otus alius","Invertivore",
@@ -345,7 +370,7 @@ saveRDS(functraits_global, "FunctionalTraits/birds_functraits_imputed.rds")
 
 birds_phylo <- ape::read.nexus("summary_dated_clements.nex")
 functraits_global <- readRDS("FunctionalTraits/birds_functraits_imputed.rds")
-spp_cell_df <- readRDS("Species_in_cells_MetaArchipelagos.rds") 
+spp_cell_df <- readRDS("Completeness_data_Islands/Species_in_cells_MetaArchipelagos.rds") 
 
 list_species <- spp_cell_df |>
   group_by(scientific_name) |>
@@ -354,18 +379,62 @@ list_species <- spp_cell_df |>
 functraits_islands <- functraits_global |>
   filter(Species2_eBird %in% list_species$scientific_name)
 
-# some (40) species in my dataset of islands do not have functraits...
+# some (173) species in the dataset of islands do not have functraits...
 no_traits_spp <- list_species |> 
   filter(!scientific_name %in% functraits_global$Species2_eBird)
 
-# we can bring the information from available (23) sister species (recent splits)
-no_traits_spp$Sister <- c("Aerodramus infuscatus", # Aerodramus sororum
-                          "Aethopyga boltoni", # Aethopyga tibolii
-                          "Ailuroedus buccoides", # Ailuroedus geislerorum
-                          "Ailuroedus crassirostris", # Ailuroedus maculosus
-                          "Ailuroedus buccoides", # Ailuroedus stonii
-                          "Batrachostomus cornutus", # Batrachostomus chaseni
-                          "Batrachostomus cornutus", # Batrachostomus javensis
+# we can bring the information from available sister species or correct taxonomic
+  # generate a "Sister" column for those species with data to those without data
+no_traits_spp$Sister <- c("Acridotheres burmannicus", # "Acridotheres leucocephalus"
+                          "Psaltria exilis", # Aegithalos exilis 
+                          "Aerodramus infuscatus", # Aerodramus sororum
+                          "Sericornis arfakianus", # Aethomyias arfakianus
+                          "Sericornis papuensis", # Aethomyias papuensis
+                          "Sericornis perspicillatus", # Aethomyias perspicillatus
+                          "Sericornis rufescens", # Aethomyias rufescens
+                          "Sericornis spilodera", # Aethomyias spilodera
+                          "Ailuroedus crassirostris", # Ailuroedus arfakianus
+                          "Ailuroedus crassirostris", # Ailuroedus maculosus 
+                          "Alcedo euryzona", # Alcedo peninsulae
+                          "Alcippe morrisonia", # Alcippe fratercula
+                          "Alcippe morrisonia", # Alcippe hueti
+                          "Alcippe morrisonia", # Alcippe striatus
+                          "Charadrius alexandrinus", # Anarhynchus alexandrinus
+                          "Charadrius mongolus", # Anarhynchus atrifrons
+                          "Charadrius collaris", # Anarhynchus collaris
+                          "Charadrius dealbatus", # Anarhynchus dealbatus
+                          "Charadrius javanicus", # Anarhynchus javanicus
+                          "Charadrius leschenaultii", # Anarhynchus leschenaultii
+                          "Charadrius mongolus", # Anarhynchus mongolus
+                          "Charadrius nivosus", # Anarhynchus nivosus
+                          "Charadrius peronii", # Anarhynchus peronii
+                          "Charadrius ruficapillus", # Anarhynchus ruficapillus
+                          "Charadrius veredus", # Anarhynchus veredus
+                          "Charadrius wilsonia", # Anarhynchus wilsonia
+                          "Anthracothorax dominicus", # Anthracothorax aurulentus
+                          "Anthus novaeseelandiae", # Anthus australis
+                          "Anthus lutescens", # Anthus chii
+                          "Antrostomus cubanensis", # Antrostomus ekmani
+                          "Harpactes reinwardtii", # Apalharpactes reinwardtii
+                          "Apus pacificus", # Apus cooki
+                          "Ardea intermedia", # Ardea plumifera
+                          "Automolus ochrolaemus", # Automolus cervinigularis
+                          "Automolus subulatus", # Automolus virgatus
+                          "Brachypteryx montana", # Brachypteryx erythrogyna
+                          "Brachypteryx montana", # Brachypteryx poliogyna
+                          "Bubulcus ibis", # Bubulcus coromandus
+                          "Cecropis striolata", # Cecropis badia
+                          "Elseyornis melanops", # Charadrius melanops
+                          "Charmosyna papou", # Charmosyna stellae
+                          "Chlorophonia musica", # Chlorophonia flavifrons
+                          "Chlorophonia musica", # Chlorophonia sclateri
+                          "Chloropsis cochinchinensis", # Chloropsis moluccensis
+                          "Reinwardtipicus validus", # Chrysocolaptes validus
+                          "Cinnyris jugularis", # Cinnyris aurora
+                          "Cinnyris jugularis", # Cinnyris frenatus
+                          "Cinnyris jugularis", # Cinnyris ornatus
+                          "Coeligena torquata", # Coeligena conradii
+                          "Coeligena bonapartei", # Coeligena conradii
                           "Collocalia esculenta", # Collocalia affinis
                           "Collocalia esculenta", # Collocalia isonata
                           "Collocalia esculenta", # Collocalia marginata
@@ -373,32 +442,122 @@ no_traits_spp$Sister <- c("Aerodramus infuscatus", # Aerodramus sororum
                           "Collocalia esculenta", # Collocalia neglecta
                           "Collocalia esculenta", # Collocalia sumbawae
                           "Collocalia esculenta", # Collocalia uropygialis
+                          "Colluricincla megarhyncha", # Colluricincla affinis
                           "Colluricincla megarhyncha", # Colluricincla fortis
                           "Colluricincla megarhyncha", # Colluricincla obscura
-                          "Colluricincla megarhyncha", # Colluricincla tappenbecki
+                          "Contopus cinereus", # Contopus bogotensis
+                          "Corvus palmarum", # Corvus minutus
+                          "Corvus enca", # Corvus pusillus
+                          "Cuculus canorus", # Cuculus optatus
+                          "Cyanoderma erythropterum", # Cyanoderma bicolor
                           "Cyornis whitei", # Cyornis montanus
-                          "Cyornis colonus", # Cyornis pelingensis
-                          "Edolisoma tenuirostre", # Edolisoma admiralitatis
-                          "Gypsophila crispifrons", #Gypsophila annamensis
+                          "Milvago chimachima", # Daptrius chimachima
+                          "Microeca papuana", # Devioeca papuana
+                          "Dicaeum ignipectus", # Dicaeum cambodianum
+                          "Dicaeum hirundinaceum", # Dicaeum keiense
+                          "Dicaeum ignipectus", # Dicaeum luzoniense
+                          "Dicrurus hottentottus", # Dicrurus palawanensis
+                          "Dicrurus hottentottus", # Dicrurus striatus
+                          "Cicinnurus magnificus", # Diphyllodes magnificus
+                          "Cicinnurus respublica", # Diphyllodes respublica
+                          "Eclectus roratus", # Eclectus polychloros
+                          "Enicurus leschenaulti", # Enicurus borneensis
+                          "Tregellasia capito", # Eopsaltria capito
+                          "Tregellasia leucops", # Eopsaltria leucops
+                          "Erythropitta macklotii", # Erythropitta habenichti
+                          "Cyornis hoevelli", # Eumyias hoevelli
+                          "Cyornis hyacinthinus", # Eumyias hyacinthinus
+                          "Cyornis oscillans", # Eumyias oscillans
+                          "Cyornis oscillans", # Eumyias stresemanni
+                          "Falcunculus frontatus", # Falcunculus whitei
+                          "Formicivora grisea", # Formicivora intermedia
+                          "Furnarius leucopus", # Furnarius longirostris
+                          "Pomatostomus isidorei", # Garritornis isidorei
+                          "Gelochelidon nilotica", # Gelochelidon macrotarsa
+                          "Gracupica contra", # Gracupica floweri
+                          "Spodiornis rusticus", # Haplospiza rustica
+                          "Heliangelus amethysticollis", # Heliangelus clarisse
+                          "Heliangelus amethysticollis", # Heliangelus spencei
+                          "Burhinus bistriatus", # Hesperoburhinus bistriatus
+                          "Heteromyias albispecularis", # Heteromyias armiti
+                          "Hypnelus ruficollis", # Hypnelus bicinctus
+                          "Alophoixus longirostris", # Hypsipetes chloris
                           "Hypsipetes philippinus", # Hypsipetes guimarasensis
-                          "Hypsipetes philippinus", # Hypsipetes mindorensis
-                          "Macropygia emiliana", # Macropygia cinnamomea
-                          "Macropygia emiliana", # Macropygia modiglianii
-                          "Colluricincla megarhyncha", # Pachycephala melanorhyncha
-                          "Pica pica", # Pica serica
+                          "Haliaeetus humilis", # Icthyophaga humilis
+                          "Haliaeetus ichthyaetus", # Icthyophaga ichthyaetus
+                          "Haliaeetus leucogaster", # Icthyophaga leucogaster
+                          "Alophoixus finschii", # Iole finschii
+                          "Irena puella", # Irena tweeddalii
+                          "Microeca griseoceps", # Kempiella griseoceps
+                          "Bubo sumatranus", # Ketupa sumatrana
+                          "Lepidothrix coronata", # Lepidothrix velutina
+                          "Locustella mandelli", # Locustella idonea
+                          "Lophura ignita", # Lophura rufa
+                          "Meiglyptes tristis", # Meiglyptes grammithorax
+                          "Peneothello cryptoleuca", # Melanodryas cryptoleuca
+                          "Peneothello cyanus", # Melanodryas cyanus
+                          "Eopsaltria pulverulenta", # Melanodryas pulverulenta
+                          "Peneothello sigillata", # Melanodryas sigillata
+                          "Cracticus quoyi", # Melloria quoyi
+                          "Melopyrrha nigra", # Melopyrrha taylori
+                          "Accipiter superciliosus", # Microspizias superciliosus
+                          "Brachypodius eutilotus", # Microtarsus eutilotus
+                          "Brachypodius fuscoflavescens", # Microtarsus fuscoflavescens
+                          "Brachypodius melanocephalos", # Microtarsus melanocephalos
+                          "Brachypodius urostictus", # Microtarsus urostictus
+                          "Mionectes olivaceus", # Mionectes galbinus
+                          "Myiopagis caniceps", # Myiopagis parambae
+                          "Polihierax insignis", # Neohierax insignis
+                          "Sericornis citreogularis", # Neosericornis citreogularis
+                          "Phaeomyias murina", # Nesotriccus incomtus
+                          "Niltava vivida", # Niltava oatesi
+                          "Ochthoeca fumicolor", # Ochthoeca superciliosa
+                          "Oriolus cruentus", # Oriolus consanguineus
+                          "Oriolus xanthonotus", # Oriolus consobrinus
+                          "Paradisaea rudolphi", # Paradisornis rudolphi
+                          "Pellorneum capistratum", # Pellorneum capistratoides
+                          "Pellorneum capistratum", # Pellorneum nigrocapitatum
+                          "Phacellodomus rufifrons", # Phacellodomus inornatus
+                          "Pitangus lictor", # Philohydor lictor
+                          "Phyllomyias burmeisteri", # Phyllomyias zeledoni
+                          "Phylloscopus sarasinorum", # Phylloscopus nesophilus
+                          "Phylloscopus trivirgatus", # Phylloscopus nigrorum
+                          "Pitta sordida", # Pitta abbotti
                           "Pitta concinna", # Pitta elegans
-                          "Pitta concinna", # Pitta vigorsii
+                          "Pitta sordida", # Pitta novaeguineae
+                          "Pitta sordida", # Pitta rosenbergii
+                          "Poecilodryas albonotata", # Plesiodryas albonotata
+                          "Phylloscartes ophthalmicus", # Pogonotriccus ophthalmicus
                           "Polioptila plumbea", # Polioptila albiventris
-                          "Prinia crinigera", # Prinia rocki
+                          "Pomatorhinus montanus", # Pomatorhinus bornensis
+                          "Porphyrio indicus", # Porphyrio melanotus
+                          "Porphyrio indicus", # Porphyrio poliocephalus
+                          "Porphyrio indicus", # Porphyrio pulverulentus
+                          "Amblyornis newtoniana", # Prionodura newtoniana
+                          "Psephotus chrysopterygius", # Psephotellus chrysopterygius
+                          "Psephotus dissimilis", # Psephotellus dissimilis
+                          "Psilopogon duvaucelii", # Psilopogon cyanotis
                           "Psittacara holochlorus", # Psittacara strenuus
                           "Pteruthius flaviscapis", # Pteruthius aeralatus
+                          "Ptilinopus solomonensis", # Ptilinopus speciosus
                           "Pycnonotus blanfordi", # Pycnonotus conradi
-                          "Rhipidura teysmanni", # Rhipidura sulaensis
-                          "Todiramphus chloris", # Todiramphus colonus
+                          "Pycnonotus finlaysoni", # Pycnonotus davisoni
+                          "Pycnonotus flavescens", # Pycnonotus leucops
+                          "Rhipidura dryas", # Rhipidura semicollaris
+                          "Rhynchocyclus olivaceus", # Rhynchocyclus aequinoctialis
+                          "Micropygia schomburgkii", # Rufirallus schomburgkii
+                          "Saudareos ornatus", # Saudareos ornata
+                          "Ochthoeca diadema", # Silvicultrix diadema
+                          "Streptopelia chinensis", # Spilopelia chinensis
+                          "Ciccaba nigrolineata", # Strix nigrolineata
+                          "Ciccaba virgata", # Strix virgata
+                          "Taenioptynx brodiei", # Taenioptynx sylvaticus
                           "Todiramphus chloris", # Todiramphus sacer
                           "Todiramphus chloris", # Todiramphus sordidus
-                          "Todiramphus chloris", # Todiramphus tristrami
-                          "Tyto manusi" # Tyto sororcula
+                          "Tolmomyias assimilis", # Tolmomyias flavotectus
+                          "Trochilus polytmus", # Trochilus scitulus
+                          "Trogon rufus", # Trogon tenellus
+                          "Tropicoperdix charltonii" # Tropicoperdix graydoni
                           )
 
 # duplicate the rows
@@ -411,22 +570,129 @@ functraits_global_update <- functraits_global |>
   bind_rows(duplicated_spp)
 
 # check it correct this
+list_species |> 
+  filter(!scientific_name %in% functraits_global$Species2_eBird) |>
+  nrow()
+# vs
+list_species |> 
+  filter(!scientific_name %in% functraits_global_update$Species2_eBird) |>
+  nrow()
+
+# it worked!!!
+
 functraits_islands <- functraits_global_update |>
   filter(Species2_eBird %in% list_species$scientific_name)
 
-# it worked!!!
+saveRDS(functraits_islands, file = "FunctionalTraits/FuncTraits_birds_Islands.rds")
 
 ## link records and functional traits ####
 
 spp_cell_df_func <- spp_cell_df |>
   left_join(functraits_islands,
             join_by(scientific_name == Species2_eBird)) |>
-  group_by(cell, phylo_name) |>
+  group_by(cell, phylo_name, scientific_name) |>
   # mean abundance per species per cell
-  mutate(mu_abundance = mean(mu_count, na.rm = T)) |>
+  mutate(mu_hat = mean(mu_hat, na.rm = TRUE),
+         omega_hat = mean(omega_hat, na.rm = TRUE)) |>
   as.data.frame() |>
   mutate(P.nes.str.cat = str_extract(nes.str.cat, "[^,]+"),
          P.nes.loc.cat = str_extract(nes.loc.cat, "[^,]+")) 
+
+# However, there are some splits not reflected in this, like 'Troglodytes aedon'
+spp_cell_df_func |> 
+  filter(scientific_name == "Troglodytes aedon") |> 
+  ggplot(aes(x = longitude,
+             y = latitude, 
+             fill = Name_USGSO)) + 
+  facet_wrap(~subregion, ncol = 1) +
+  geom_point(shape = 21) +
+  geom_hline(yintercept = 23.5, color = "red")+
+  theme_classic() +
+  coord_equal()
+
+# so, lets name these wren
+# musculus at south of lat 23.5 and in mainland
+spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & subregion == "Mainland",
+                                  "Troglodytes musculus",
+                                  scientific_name)) 
+
+# Troglodytes beani in Cozumel island
+spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & Name_USGSO == "Cozumel",
+                                  "Troglodytes beani",
+                                  scientific_name)) 
+
+# Troglodytes martinicensis in Dominica island
+spp_cell_df_func <- spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & Name_USGSO == "Dominica",
+                                  "Troglodytes martinicensis",
+                                  scientific_name))
+
+# Troglodytes mesoleucus in Saint Lucia island
+spp_cell_df_func <- spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & Name_USGSO == "Saint Lucia",
+                                  "Troglodytes mesoleucus",
+                                  scientific_name))
+
+# Troglodytes musicus in St Vincent island
+spp_cell_df_func <- spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & Name_USGSO == "St Vincent",
+                                  "Troglodytes musicus",
+                                  scientific_name))
+
+# Troglodytes grenadensis in St Vincent island
+spp_cell_df_func <- spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & Name_USGSO == "Grenada",
+                                  "Troglodytes grenadensis",
+                                  scientific_name))
+
+# musculus at south of lat 23.5 and in Continental islands, except Cozumel
+spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Troglodytes aedon" & latitude < 23.5 & Name_USGSO %in% c("Barro Colorado",
+                                                                                                               "Bastimentos",
+                                                                                                               "Colon",
+                                                                                                               "Tobago",
+                                                                                                               "Trinidad"),
+                                  "Troglodytes musculus",
+                                  scientific_name)) 
+
+
+spp_cell_df_func |> 
+  filter(scientific_name %in% c("Troglodytes aedon",
+                                "Troglodytes musculus",
+                                "Troglodytes beani", 
+                                "Troglodytes martinicensis",
+                                "Troglodytes mesoleucus",
+                                "Troglodytes musicus",
+                                "Troglodytes grenadensis")) |> 
+  ggplot(aes(x = longitude,
+             y = latitude, 
+             fill = scientific_name)) + 
+  facet_wrap(~subregion, ncol = 1) +
+  geom_point(shape = 21) +
+  theme_classic() +
+  coord_equal()
+
+# And finally, the "White-breasted Thrasher (Ramphocinclus brachyurus)" split
+spp_cell_df_func <- spp_cell_df_func |> 
+  mutate(scientific_name = ifelse(scientific_name == "Ramphocinclus brachyurus",
+                                  "Ramphocinclus sanctaeluciae",
+                                  scientific_name))
+
+length(unique(spp_cell_df_func$scientific_name))
+# It increases the number of species.
+
+# For some of these species, we should also correct the insular endemic trait (end.ins)
+
+spp_cell_df_func <- spp_cell_df_func |>
+  mutate(end.ins = ifelse(scientific_name %in% c("Troglodytes beani",
+                                                 "Troglodytes grenadensis",
+                                                 "Troglodytes martinicensis",
+                                                 "Troglodytes mesoleucus"),
+                          1, end.ins))
+
+saveRDS(spp_cell_df_func, "Completeness_data_Islands/Records_eBird_func_traits.rds")
 
 names(spp_cell_df_func)
 
@@ -441,67 +707,122 @@ cwv <- function(x, wt, CWM){
 
 # Calculating the CWM and CWV
 
-summarized_islands_cwm <- spp_cell_df_func |>
+islands_cwm_mu_summary <- spp_cell_df_func |>
   group_by(cell, Meta.Archipelago, subregion) |>
   summarise(spp_richness = n(),
           # CWM
             # dispersal morphology
-            `body mass` = weighted.mean(bod.mas, mu_abundance, na.rm = T),
-            `hand wing index` = weighted.mean(hwi, mu_abundance, na.rm = T),
+            `body mass` = weighted.mean(bod.mas, mu_hat, na.rm = T),
+            `hand wing index` = weighted.mean(hwi, mu_hat, na.rm = T),
             # foraging morphology
-            `tarsus length` = weighted.mean(tar.len, mu_abundance, na.rm = T),
-            `wing length` = weighted.mean(win.len, mu_abundance, na.rm = T),
+            `tarsus length` = weighted.mean(tar.len, mu_hat, na.rm = T),
+            `wing length` = weighted.mean(win.len, mu_hat, na.rm = T),
             # dietary morphology
-            `beak length` = weighted.mean(bea.len, mu_abundance, na.rm = T), 
-            `beak width` = weighted.mean(bea.wid, mu_abundance, na.rm = T),
-            `beak depth` = weighted.mean(bea.dep, mu_abundance, na.rm = T), 
+            `beak length` = weighted.mean(bea.len, mu_hat, na.rm = T), 
+            `beak width` = weighted.mean(bea.wid, mu_hat, na.rm = T),
+            `beak depth` = weighted.mean(bea.dep, mu_hat, na.rm = T), 
             # ecological niche
-            `body length` = weighted.mean(bod.len, mu_abundance, na.rm = T), #highly correlated
-            `habitat breadth` = weighted.mean(hab.bre, mu_abundance, na.rm = T),
-            `range size` = weighted.mean(ran.siz, mu_abundance, na.rm = T),
+            `body length` = weighted.mean(bod.len, mu_hat, na.rm = T), #highly correlated
+            `habitat breadth` = weighted.mean(hab.bre, mu_hat, na.rm = T),
+            `range size` = weighted.mean(ran.siz, mu_hat, na.rm = T),
               # converting 0-1 index to 1-2 (log10 transformation)
-            `endemic insularity` = (weighted.mean(end.ins, mu_abundance, na.rm = T)+1),
+            `endemic insularity` = (weighted.mean(end.ins, mu_hat, na.rm = T)+1),
             # foraging niche 
               # converting 0-1 index to 1-2 (log10 transformation)
-            pred = (weighted.mean(predatory, mu_abundance, na.rm = T)+1),
+            pred = (weighted.mean(predatory, mu_hat, na.rm = T)+1),
             # converting 0-1 index to 1-2 (log10 transformation)
-            `diet generalist` = (weighted.mean(generalist, mu_abundance, na.rm = T)+1),
+            `diet generalist` = (weighted.mean(generalist, mu_hat, na.rm = T)+1),
           # behavioral / reproductive niche
-            verticality = weighted.mean(vertical, mu_abundance, na.rm = T),
-            `nest structure breadth` = weighted.mean(nes.str.bre, mu_abundance, na.rm = T),
-            `nest location breadth` = weighted.mean(nes.loc.bre, mu_abundance, na.rm = T),
+            verticality = weighted.mean(vertical, mu_hat, na.rm = T),
+            `nest structure breadth` = weighted.mean(nes.str.bre, mu_hat, na.rm = T),
+            `nest location breadth` = weighted.mean(nes.loc.bre, mu_hat, na.rm = T),
           # CWV  
             # dispersal morphology 
-            `bmass cwv` = cwv(bod.mas, mu_abundance, `body mass`), 
-            `hwi cwv` = cwv(hwi, mu_abundance, `hand wing index`),
+            `bmass cwv` = cwv(bod.mas, mu_hat, `body mass`), 
+            `hwi cwv` = cwv(hwi, mu_hat, `hand wing index`),
             # foraging morphology
-            `tarsus cwv` = cwv(tar.len, mu_abundance, `tarsus length`),
-            `wing cwv` = cwv(win.len, mu_abundance, `wing length`),
+            `tarsus cwv` = cwv(tar.len, mu_hat, `tarsus length`),
+            `wing cwv` = cwv(win.len, mu_hat, `wing length`),
             # dietary morphology
-            `beak l cwv` = cwv(bea.len, mu_abundance, `beak length`), 
-            `beak w cwv` = cwv(bea.wid, mu_abundance, `beak width`),
-            `beak d cwv` = cwv(bea.dep, mu_abundance, `beak depth`), 
+            `beak l cwv` = cwv(bea.len, mu_hat, `beak length`), 
+            `beak w cwv` = cwv(bea.wid, mu_hat, `beak width`),
+            `beak d cwv` = cwv(bea.dep, mu_hat, `beak depth`), 
           # ecological niche
-          `body l cwv` = cwv(bod.len, mu_abundance, `body length`),
-          `habitat b cwv` = cwv(hab.bre, mu_abundance, `habitat breadth`),
-          `range cwv` = cwv(ran.siz, mu_abundance, `range size`),
+          `body l cwv` = cwv(bod.len, mu_hat, `body length`),
+          `habitat b cwv` = cwv(hab.bre, mu_hat, `habitat breadth`),
+          `range cwv` = cwv(ran.siz, mu_hat, `range size`),
           # converting 0-1 index to 1-2 (log10 transformation)
-          `insularity cwv` = (cwv(end.ins, mu_abundance, `endemic insularity`)),
+          `insularity cwv` = (cwv(end.ins, mu_hat, `endemic insularity`)),
           # foraging niche 
           # converting 0-1 index to 1-2 (log10 transformation)
-          `predatory cwv` = (cwv(predatory, mu_abundance, pred)),
+          `predatory cwv` = (cwv(predatory, mu_hat, pred)),
           # converting 0-1 index to 1-2 (log10 transformation)
-          `generalist cwv` = (cwv(generalist, mu_abundance, `diet generalist`)),
+          `generalist cwv` = (cwv(generalist, mu_hat, `diet generalist`)),
           # behavioral / reproductive niche
-          `verticality cwv` = cwv(vertical, mu_abundance, verticality),
-          `nest str cwv` = cwv(nes.str.bre, mu_abundance, `nest structure breadth`),
-          `nest loc cwv` = cwv(nes.loc.bre, mu_abundance, `nest location breadth`),
-            ) |>
-  filter(spp_richness >=4)
+          `verticality cwv` = cwv(vertical, mu_hat, verticality),
+          `nest str cwv` = cwv(nes.str.bre, mu_hat, `nest structure breadth`),
+          `nest loc cwv` = cwv(nes.loc.bre, mu_hat, `nest location breadth`),
+            ) # 17 spp is the 1st quartile, but this reduces a lot 
+
+islands_cwm_omega_summary <- spp_cell_df_func |>
+  group_by(cell, Meta.Archipelago, subregion) |>
+  summarise(spp_richness = n(),
+            # CWM
+            # dispersal morphology
+            `body mass` = weighted.mean(bod.mas, omega_hat, na.rm = T),
+            `hand wing index` = weighted.mean(hwi, omega_hat, na.rm = T),
+            # foraging morphology
+            `tarsus length` = weighted.mean(tar.len, omega_hat, na.rm = T),
+            `wing length` = weighted.mean(win.len, omega_hat, na.rm = T),
+            # dietary morphology
+            `beak length` = weighted.mean(bea.len, omega_hat, na.rm = T), 
+            `beak width` = weighted.mean(bea.wid, omega_hat, na.rm = T),
+            `beak depth` = weighted.mean(bea.dep, omega_hat, na.rm = T), 
+            # ecological niche
+            `body length` = weighted.mean(bod.len, omega_hat, na.rm = T), #highly correlated
+            `habitat breadth` = weighted.mean(hab.bre, omega_hat, na.rm = T),
+            `range size` = weighted.mean(ran.siz, omega_hat, na.rm = T),
+            # converting 0-1 index to 1-2 (log10 transformation)
+            `endemic insularity` = (weighted.mean(end.ins, omega_hat, na.rm = T)+1),
+            # foraging niche 
+            # converting 0-1 index to 1-2 (log10 transformation)
+            pred = (weighted.mean(predatory, omega_hat, na.rm = T)+1),
+            # converting 0-1 index to 1-2 (log10 transformation)
+            `diet generalist` = (weighted.mean(generalist, omega_hat, na.rm = T)+1),
+            # behavioral / reproductive niche
+            verticality = weighted.mean(vertical, omega_hat, na.rm = T),
+            `nest structure breadth` = weighted.mean(nes.str.bre, omega_hat, na.rm = T),
+            `nest location breadth` = weighted.mean(nes.loc.bre, omega_hat, na.rm = T),
+            # CWV  
+            # dispersal morphology 
+            `bmass cwv` = cwv(bod.mas, omega_hat, `body mass`), 
+            `hwi cwv` = cwv(hwi, omega_hat, `hand wing index`),
+            # foraging morphology
+            `tarsus cwv` = cwv(tar.len, omega_hat, `tarsus length`),
+            `wing cwv` = cwv(win.len, omega_hat, `wing length`),
+            # dietary morphology
+            `beak l cwv` = cwv(bea.len, omega_hat, `beak length`), 
+            `beak w cwv` = cwv(bea.wid, omega_hat, `beak width`),
+            `beak d cwv` = cwv(bea.dep, omega_hat, `beak depth`), 
+            # ecological niche
+            `body l cwv` = cwv(bod.len, omega_hat, `body length`),
+            `habitat b cwv` = cwv(hab.bre, omega_hat, `habitat breadth`),
+            `range cwv` = cwv(ran.siz, omega_hat, `range size`),
+            # converting 0-1 index to 1-2 (log10 transformation)
+            `insularity cwv` = (cwv(end.ins, omega_hat, `endemic insularity`)),
+            # foraging niche 
+            # converting 0-1 index to 1-2 (log10 transformation)
+            `predatory cwv` = (cwv(predatory, omega_hat, pred)),
+            # converting 0-1 index to 1-2 (log10 transformation)
+            `generalist cwv` = (cwv(generalist, omega_hat, `diet generalist`)),
+            # behavioral / reproductive niche
+            `verticality cwv` = cwv(vertical, omega_hat, verticality),
+            `nest str cwv` = cwv(nes.str.bre, omega_hat, `nest structure breadth`),
+            `nest loc cwv` = cwv(nes.loc.bre, omega_hat, `nest location breadth`),
+  ) # 17 spp is the 1st quartile
 
 # group for figure
-
-islands_cwm <- summarized_islands_cwm |>
+islands_cwm_mu <- islands_cwm_mu_summary |>
   mutate(subregion = ifelse(subregion == "Mainland", "Mainland",
                      ifelse(subregion == "Caribbean - Continental islands", "Continental islands",
                      ifelse(subregion == "Caribbean - Greater Antilles", "Greater Antilles",
@@ -534,33 +855,92 @@ islands_cwm <- summarized_islands_cwm |>
                      ifelse(subregion == "Vanuatu", "Islands",
                      subregion))))))))))))))
 
-corrplot(round(cor(scale(log10(islands_cwm[,c(5:20)]))),2), 
+islands_cwm_omega <- islands_cwm_omega_summary |>
+  mutate(subregion = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Caribbean - Continental islands", "Continental islands",
+                     ifelse(subregion == "Caribbean - Greater Antilles", "Greater Antilles",
+                     ifelse(subregion == "Caribbean - Kalinago", "Lesser Antilles (Kalinago)",
+                     ifelse(subregion == "Caribbean - Lucayan", "Bahamas (Lucayan)",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Andaman & Nicobar", "Andaman & Nicobar",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Continental islands", "Continental islands",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Philippines", "Philippines",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Sunda islands", "Sunda islands",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Wallacea", "Wallacea",
+                     ifelse(subregion == "Papuan-Melanesian - Bismarcks", "Bismarcks",
+                     ifelse(subregion == "Papuan-Melanesian - Papua", "Papua",
+                     ifelse(subregion == "Papuan-Melanesian - Solomons", "Solomons",
+                     ifelse(subregion == "Papuan-Melanesian - Vanuatu", "Vanuatu",
+                     subregion)))))))))))))),
+         region = ifelse(Meta.Archipelago == "Indo.Pacific", "Indo Pacific",
+                         "Neotropical"),
+         fig_group = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Continental islands", "Islands",
+                     ifelse(subregion == "Greater Antilles", "Islands",
+                     ifelse(subregion == "Lesser Antilles (Kalinago)", "Islands",
+                     ifelse(subregion == "Bahamas (Lucayan)", "Islands",
+                     ifelse(subregion == "Andaman & Nicobar", "Islands",
+                     ifelse(subregion == "Philippines", "Islands",
+                     ifelse(subregion == "Sunda islands", "Islands",
+                     ifelse(subregion == "Wallacea", "Islands",
+                     ifelse(subregion == "Bismarcks", "Islands",
+                     ifelse(subregion == "Papua", "Islands",
+                     ifelse(subregion == "Solomons", "Islands",
+                     ifelse(subregion == "Vanuatu", "Islands",
+                     subregion))))))))))))))
+
+names(islands_cwm_mu)
+names(islands_cwm_omega)
+
+corrplot(round(cor(scale(log10(islands_cwm_mu[,c(5:20)]))),2), 
          type="upper", order="hclust", 
          tl.col="black", tl.srt=45)
 
+corrplot(round(cor(scale(log10(islands_cwm_omega[,c(5:20)]))),2), 
+         type="upper", order="hclust", 
+         tl.col="black", tl.srt=45)
+
+# Save data for PCAs figure!! ####
+
+saveRDS(islands_cwm_mu, "Completeness_data_Islands/Islands_CWM_mu.rds")
+
+
 # Global CWM pca ####
 
-funspaceDim(scale(log10(islands_cwm[,c(5:20)]))) # 5 dimensions
+funspaceDim(scale(log10(islands_cwm_mu[,c(5:20)]))) # 4 dimensions
+funspaceDim(scale(log10(islands_cwm_omega[,c(5:20)]))) # 4 dimensions
 
-pca.cwm <- prcomp(scale(log10(islands_cwm[,c(5:20)])))
+pca.cwm.mu <- prcomp(scale(log10(islands_cwm_mu[,c(5:20)])))
+pca.cwm.omega <- prcomp(scale(log10(islands_cwm_omega[,c(5:20)])))
 
-summary(pca.cwm)
+summary(pca.cwm.mu)
+summary(pca.cwm.omega)
 
-pca.values <- data.frame(cell = islands_cwm$cell,
-                         region = islands_cwm$region,
-                         subregion = islands_cwm$subregion,
-                         fig_group = islands_cwm$fig_group,
-                         sp_richness = islands_cwm$spp_richness,
-                         pca.cwm$x)
+pca.values.mu <- data.frame(cell = islands_cwm_mu$cell,
+                         region = islands_cwm_mu$region,
+                         subregion = islands_cwm_mu$subregion,
+                         fig_group = islands_cwm_mu$fig_group,
+                         sp_richness = islands_cwm_mu$spp_richness,
+                         pca.cwm.mu$x)
 
-pca.loadings <- data.frame(Variables = rownames(pca.cwm$rotation), pca.cwm$rotation)
+pca.values.omega <- data.frame(cell = islands_cwm_omega$cell,
+                            region = islands_cwm_omega$region,
+                            subregion = islands_cwm_omega$subregion,
+                            fig_group = islands_cwm_omega$fig_group,
+                            sp_richness = islands_cwm_omega$spp_richness,
+                            pca.cwm.omega$x)
+
+pca.loadings.mu <- data.frame(Variables = rownames(pca.cwm.mu$rotation), 
+                              pca.cwm.mu$rotation)
+
+pca.loadings.omega <- data.frame(Variables = rownames(pca.cwm.omega$rotation), 
+                              pca.cwm.omega$rotation)
 
 # to make sense in the ordination
 pca.values$PC2 <- (pca.values$PC2*-1)
 pca.loadings$PC2 <- (pca.loadings$PC2*-1)
 
 #figure
-global.pca.fig <- ggplot(pca.values) +
+pca.fig.mu.a <- ggplot(pca.values.mu) +
   geom_point(aes(x = PC1, 
                  y = PC2, 
                  shape = region,
@@ -570,20 +950,21 @@ global.pca.fig <- ggplot(pca.values) +
   scale_shape_manual(values = c(21,22))+
   scale_fill_manual(values = c("#2980B9","gray"))+
   scale_color_manual(values = c("#2980B9","gray"))+
-  scale_x_continuous(limits = c(-16,13))+
-  scale_y_continuous(limits = c(-8,6))+
+  scale_x_continuous(limits = c(-9.5,8.5))+
+  scale_y_continuous(limits = c(-5.5,5.5))+
   coord_fixed()+
-  geom_segment(data = pca.loadings, 
+  geom_segment(data = pca.loadings.mu, 
                linewidth = 0.25,
-               aes(x = 0, xend = PC1*12, 
-                   y = 0, yend = PC2*8),
+               aes(x = 0, xend = PC1*6, 
+                   y = 0, yend = PC2*4),
                arrow = arrow(length = unit(0.1, "cm")),
                colour = "black") +
-  geom_text_repel(data = pca.loadings, 
-            aes(x = PC1*13, y = PC2*9, 
+  geom_text_repel(data = pca.loadings.mu, 
+            aes(x = PC1*7, y = PC2*5, 
                 label = Variables)) + 
-  labs(x = "PC1 (41.41%)",
-       y = "PC2 (14.34%)",
+  labs(x = "PC1 (48.12%)",
+       y = "PC2 (16.02%)",
+       title = expression(bold("a ")~hat(mu)),
        fill = "Geographic setting",
        color = "Geographic setting",
        shape = "Region")+
@@ -594,18 +975,139 @@ global.pca.fig <- ggplot(pca.values) +
   guides(fill=guide_legend(nrow=2,byrow=TRUE),
          shape=guide_legend(nrow=2,byrow=TRUE))
 
-global.pca.density.fig <- ggMarginal(global.pca.fig,
+pca.density.fig.mu.a <- ggMarginal(pca.fig.mu.a,
                                      type = "density",
                                      groupColour = TRUE, 
                                      groupFill = TRUE)
 
+pca.fig.mu.b <- ggplot(pca.values.mu) +
+  geom_point(aes(x = PC3, 
+                 y = PC4, 
+                 shape = region,
+                 fill = fig_group,
+                 color = fig_group), 
+             alpha = 0.25) +
+  scale_shape_manual(values = c(21,22))+
+  scale_fill_manual(values = c("#2980B9","gray"))+
+  scale_color_manual(values = c("#2980B9","gray"))+
+  scale_x_continuous(limits = c(-9.5,8.5))+
+  scale_y_continuous(limits = c(-5.5,5.5))+
+  coord_fixed()+
+  geom_segment(data = pca.loadings.mu, 
+               linewidth = 0.25,
+               aes(x = 0, xend = PC3*6, 
+                   y = 0, yend = PC4*4),
+               arrow = arrow(length = unit(0.1, "cm")),
+               colour = "black") +
+  geom_text_repel(data = pca.loadings.mu, 
+                  aes(x = PC3*7, y = PC4*5, 
+                      label = Variables)) + 
+  labs(x = "PC3 (8.34%)",
+       y = "PC4 (7.31%)",
+       title = expression(bold("b ")~hat(mu)),
+       fill = "Geographic setting",
+       color = "Geographic setting",
+       shape = "Region")+
+  theme(legend.position = "bottom",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))+
+  guides(fill=guide_legend(nrow=2,byrow=TRUE),
+         shape=guide_legend(nrow=2,byrow=TRUE))
+
+pca.density.fig.mu.b <- ggMarginal(pca.fig.mu.b,
+                                   type = "density",
+                                   groupColour = TRUE, 
+                                   groupFill = TRUE)
+
+
+pca.fig.omega.a <- ggplot(pca.values.omega) +
+  geom_point(aes(x = PC1, 
+                 y = PC2, 
+                 shape = region,
+                 fill = fig_group,
+                 color = fig_group), 
+             alpha = 0.25) +
+  scale_shape_manual(values = c(21,22))+
+  scale_fill_manual(values = c("#2980B9","gray"))+
+  scale_color_manual(values = c("#2980B9","gray"))+
+  scale_x_continuous(limits = c(-9.5,8.5))+
+  scale_y_continuous(limits = c(-5.5,5.5))+
+  coord_fixed()+
+  geom_segment(data = pca.loadings.omega, 
+               linewidth = 0.25,
+               aes(x = 0, xend = PC1*6, 
+                   y = 0, yend = PC2*4),
+               arrow = arrow(length = unit(0.1, "cm")),
+               colour = "black") +
+  geom_text_repel(data = pca.loadings.omega, 
+                  aes(x = PC1*7, y = PC2*5, 
+                      label = Variables)) + 
+  labs(x = "PC1 (46.6%)",
+       y = "PC2 (15.82%)",
+       title = expression(bold("a ")~hat(omega)),
+       fill = "Geographic setting",
+       color = "Geographic setting",
+       shape = "Region")+
+  theme(legend.position = "bottom",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))+
+  guides(fill=guide_legend(nrow=2,byrow=TRUE),
+         shape=guide_legend(nrow=2,byrow=TRUE))
+
+pca.density.fig.omega.a <- ggMarginal(pca.fig.omega.a,
+                                        type = "density",
+                                        groupColour = TRUE, 
+                                        groupFill = TRUE)
+
+pca.fig.omega.b <- ggplot(pca.values.omega) +
+  geom_point(aes(x = PC3, 
+                 y = PC4, 
+                 shape = region,
+                 fill = fig_group,
+                 color = fig_group), 
+             alpha = 0.25) +
+  scale_shape_manual(values = c(21,22))+
+  scale_fill_manual(values = c("#2980B9","gray"))+
+  scale_color_manual(values = c("#2980B9","gray"))+
+  scale_x_continuous(limits = c(-9.5,8.5))+
+  scale_y_continuous(limits = c(-5.5,5.5))+
+  coord_fixed()+
+  geom_segment(data = pca.loadings.omega, 
+               linewidth = 0.25,
+               aes(x = 0, xend = PC3*6, 
+                   y = 0, yend = PC4*4),
+               arrow = arrow(length = unit(0.1, "cm")),
+               colour = "black") +
+  geom_text_repel(data = pca.loadings.omega, 
+                  aes(x = PC3*7, y = PC4*5, 
+                      label = Variables)) + 
+  labs(x = "PC3 (8.54%)",
+       y = "PC4 (7.19%)",
+       title = expression(bold("b ")~hat(omega)),
+       fill = "Geographic setting",
+       color = "Geographic setting",
+       shape = "Region")+
+  theme(legend.position = "bottom",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))+
+  guides(fill=guide_legend(nrow=2,byrow=TRUE),
+         shape=guide_legend(nrow=2,byrow=TRUE))
+
+pca.density.fig.omega.b <- ggMarginal(pca.fig.omega.b,
+                                   type = "density",
+                                   groupColour = TRUE, 
+                                   groupFill = TRUE)
+
 ## Caribbean ####
 
-caribbean_cwm <- islands_cwm |>
+caribbean_cwm <- islands_cwm_mu |>
   filter(Meta.Archipelago %in% "Neotropical")
 
 
-funspaceDim(scale(log10(caribbean_cwm[,c(5:20)]))) # 5 dimensions
+funspaceDim(scale(log10(caribbean_cwm[,c(5:20)]))) # 4 dimensions
 
 carib.pca.cwm <- prcomp(scale(log10(caribbean_cwm[,c(5:20)])))
 
@@ -640,19 +1142,19 @@ global.carib.pca.fig <- ggplot(carib.pca.values) +
                                 "#35B779",
                                 "#21908C",
                                 "#A1A1A1"))+
-  scale_x_continuous(limits = c(-16,13))+
-  scale_y_continuous(limits = c(-8,6))+
+#  scale_x_continuous(limits = c(-9,8))+
+#  scale_y_continuous(limits = c(-4,6))+
   coord_fixed()+
   geom_segment(data = carib.pca.loadings, 
                size = 0.25,
-               aes(x = 0, xend = PC1*12, 
+               aes(x = 0, xend = PC1*10, 
                    y = 0, yend = PC2*8),
                arrow = arrow(length = unit(0.1, "cm")),
                colour = "black") +
   geom_text_repel(data = carib.pca.loadings, 
-            aes(x = PC1*13, y = PC2*9, label = Variables)) + 
-  labs(x = "PC1 (35.55%)",
-       y = "PC2 (18.34%)",
+            aes(x = PC1*12, y = PC2*10, label = Variables)) + 
+  labs(x = "PC1 (44.91%)",
+       y = "PC2 (12.45%)",
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
@@ -840,7 +1342,7 @@ mainlcarib.pca.density.fig <- ggMarginal(mainlcarib.pca.fig,
 
 ## Oriental-Indo-Malayan ####
 
-orinma_cwm <- islands_cwm |>
+orinma_cwm <- islands_cwm_mu |>
   filter(Meta.Archipelago %in% "Indo.Pacific",
          subregion %in% c("Andaman & Nicobar",
                           "Continental islands",
@@ -857,7 +1359,7 @@ orinma_cwm <- islands_cwm |>
   filter(longitude < 140,
          latitude > -11)
 
-funspaceDim(scale(log10(orinma_cwm[,c(5:20)]))) # 4 dimensions
+funspaceDim(scale(log10(orinma_cwm[,c(5:20)]))) # 3 dimensions
 
 orinma.pca.cwm <- prcomp(scale(log10(orinma_cwm[,c(5:20)])))
 
@@ -891,19 +1393,19 @@ global.orinma.pca.fig <- ggplot(orinma.pca.values) +
                                 "#A1A1A1",
                                 "#F6A97A",
                                 "#F66D7A"))+
-  scale_x_continuous(limits = c(-16,13))+
-  scale_y_continuous(limits = c(-8,6))+
+#  scale_x_continuous(limits = c(-9,7))+
+#  scale_y_continuous(limits = c(-5,4))+
   coord_fixed()+
   geom_segment(data = orinma.pca.loadings, 
                size = 0.25,
-               aes(x = 0, xend = PC1*12, 
+               aes(x = 0, xend = PC1*10, 
                    y = 0, yend = PC2*8),
                arrow = arrow(length = unit(0.1, "cm")),
                colour = "black") +
   geom_text_repel(data = orinma.pca.loadings, 
-            aes(x = PC1*13, y = PC2*9, label = Variables)) + 
-  labs(x = "PC1 (37.46%)",
-       y = "PC2 (16.51%)",
+            aes(x = PC1*12, y = PC2*10, label = Variables)) + 
+  labs(x = "PC1 (47.53%)",
+       y = "PC2 (14.62%)",
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
@@ -1138,7 +1640,7 @@ wallace.pca.density.fig <- ggMarginal(wallace.pca.fig,
 
 ## Papuan-Melanesian ####
 
-papuan_cwm <- islands_cwm |>
+papuan_cwm <- islands_cwm_mu |>
   # extract subregions of Papuan-Melanesian region - including mainland for Australia
   filter(subregion %in% c("Bismarcks",
                           "Papua",
@@ -1155,7 +1657,7 @@ papuan_cwm <- islands_cwm |>
   # extract the cells to the right of longitude 120 (~ Sulawesi)
   filter(longitude >=110)
 
-funspaceDim(scale(log10(papuan_cwm[,c(5:20)]))) # 4 dimensions
+funspaceDim(scale(log10(papuan_cwm[,c(5:20)]))) # 3 dimensions
 
 papuan.pca.cwm <- prcomp(scale(log10(papuan_cwm[,c(5:20)])))
 
@@ -1191,19 +1693,19 @@ global.papuan.pca.fig <- ggplot(papuan.pca.values) +
                                 "#F0E442",
                                 "#009E73",
                                 "#D55E00"))+
-  scale_x_continuous(limits = c(-16,13))+
-  scale_y_continuous(limits = c(-8,6))+
+  scale_x_continuous(limits = c(-9,8))+
+  scale_y_continuous(limits = c(-5,5))+
   coord_fixed()+
   geom_segment(data = papuan.pca.loadings, 
                size = 0.25,
-               aes(x = 0, xend = PC1*12, 
+               aes(x = 0, xend = PC1*10, 
                    y = 0, yend = PC2*8),
                arrow = arrow(length = unit(0.1, "cm")),
                colour = "black") +
   geom_text_repel(data = papuan.pca.loadings, 
-            aes(x = PC1*13, y = PC2*9, label = Variables)) + 
-  labs(x = "PC1 (45.24%)",
-       y = "PC2 (13.75%)",
+            aes(x = PC1*12, y = PC2*10, label = Variables)) + 
+  labs(x = "PC1 (52.55%)",
+       y = "PC2 (15.82%)",
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
