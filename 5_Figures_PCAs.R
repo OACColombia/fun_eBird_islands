@@ -8,6 +8,8 @@ library(grid)
 library(ggrepel) # for geom_text_repel()
 library(funspace) # functional trait space
 library(ggstar) # points as hexagons
+library(GGally)
+
 
 # Call the data ####
 
@@ -74,7 +76,14 @@ spp_cell_df <- readRDS("Completeness_data_Islands/Species_in_cells_MetaArchipela
 # PCA Caribbean CWM ####
 
 caribbean_cwm <- islands_cwm_mu_sem |>
-  filter(Meta_Archipelago %in% "Caribbean")
+  filter(Meta_Archipelago %in% "Caribbean") |>
+  # bring back the mean value of longitude for each cell
+  left_join(spp_cell_df |> 
+              dplyr::select(cell,longitude, latitude) |> 
+              group_by(cell) |> 
+              summarize(longitude = mean(longitude),
+                        latitude = mean(latitude))) |>
+  filter(latitude < 24 | longitude > -79.5)
 
 names(caribbean_cwm)
 
@@ -95,13 +104,56 @@ carib.pca.cwm.values <- data.frame(cell = caribbean_cwm$cell,
                                pred_richness = caribbean_cwm$PredSppRichnessCell,
                                carib.pca.cwm$x)
 
-carib.pca.cwm.loadings <- data.frame(Variables = rownames(carib.pca.cwm$rotation), carib.pca.cwm$rotation)
+carib.pca.cwm.loadings <- data.frame(Variables = rownames(carib.pca.cwm$rotation), 
+                                     carib.pca.cwm$rotation)
+
+aload.car <- abs(carib.pca.cwm$rotation)
+sweep(aload.car, 2, colSums(aload.car), "/")
+
+
+table(carib.pca.cwm.values$subregion)
+
+carib.pca.cwm.values$subregion <- factor(carib.pca.cwm.values$subregion,
+                                          levels = c("Mainland",
+                                                     "Continental islands",
+                                                     "Lesser Antilles (Kalinago)",
+                                                     "Greater Antilles",
+                                                     "Bahamas (Lucayan)"))
+
+caribe <- ggpairs(carib.pca.cwm.values,
+        columns = 8:10,
+        aes(color = subregion,
+            fill = subregion,
+            alpha = 0.001),
+        upper = list(continuous = wrap("density", alpha = 0.1, bins = 8)))+
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#aadce0",
+                               "#376795",
+                               "#ef8a47"))+
+  scale_color_manual(values = c("#A1A1A1",
+                                "#663171",
+                                
+                                "#aadce0",
+                                "#376795",
+                                "#ef8a47"))+
+  theme(legend.position = "bottom",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"), 
+        strip.background = element_blank())
+
+saveRDS(caribe, "figures jpg/Caribe_PC1PC3.RDS")
 
 ## Figure CWM-a - PC1-PC2 Caribbean ####
 summary(carib.pca.cwm.values[,8:10])
 summary(carib.pca.cwm)
 
 cwm.a <- ggplot(carib.pca.cwm.values) +
+    geom_density2d(aes(x = PC1, y = PC2,
+                       color = subregion), 
+                          alpha = 0.5, bins = 10)+
   geom_point(aes(x = PC1, 
                  y = PC2, 
                  fill = subregion,
@@ -111,47 +163,62 @@ cwm.a <- ggplot(carib.pca.cwm.values) +
   geom_star(aes(x = PC1, 
                 y = PC2, 
                 fill = subregion,
-                color = subregion), 
-            alpha = 0.3,
-            starshape = 6) +
-  scale_fill_manual(values = c("#E3E418",
-                               "#481F70",
-                               "#35B779",
-                               "#21908C",
-                               "#A1A1A1"))+
-  scale_color_manual(values = c("#E3E418",
-                                "#481F70",
-                                "#35B779",
-                                "#21908C",
-                                "#A1A1A1"))+
-  scale_x_continuous(limits = c(-8.5,9))+
-  scale_y_continuous(limits = c(-6,6))+
+                color = subregion, 
+                size = spp_richness), 
+            alpha = 0.1,
+            starshape = 6,
+            starstroke = 0.5) +
+#  facet_wrap(vars(subregion))+
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#aadce0",
+                               "#376795",
+                               "#ef8a47"))+
+  scale_color_manual(values = c("#A1A1A1",
+                                "#663171",
+                                
+                                "#aadce0",
+                                "#376795",
+                                "#ef8a47"))+
+  scale_x_continuous(limits = c(-9.1,9.1))+
+  scale_y_continuous(limits = c(-6.1,6.1))+
   coord_fixed()+
-#  geom_segment(data = carib.pca.cwm.loadings, 
-#               size = 0.25,
-#               aes(x = 0, xend = PC1*5, 
-#                   y = 0, yend = PC2*4),
+#  geom_segment(data = carib.pca.cwm.loadings |>
+#                 filter(Variables %in% c("hand wing index",
+#                                         "beak width",
+#                                         "beak depth",
+#                                         "verticality")), 
+#               linewidth = 0.25,
+#               aes(x = 0, xend = PC1*10, 
+#                   y = 0, yend = PC2*10),
 #               arrow = arrow(length = unit(0.1, "cm")),
 #               colour = "black") +
   geom_text_repel(data = carib.pca.cwm.loadings, 
-                  aes(x = PC1*8, y = PC2*8, 
+                  aes(x = PC1*20, y = PC2*12, 
                       label = Variables),
-                  size = 3) + 
-  labs(x = "PC1 (57.83%)",
-       y = "PC2 (13.47%)",
+                  size = 3, color = "black") + 
+  labs(x = "PC1 (55.63%)",
+       y = "PC2 (14.42%)",
 #       title = expression(bold("a")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
-        panel.border=element_rect(fill=NA,colour="grey50"))
+        panel.border=element_rect(fill=NA,colour="grey50"), 
+        strip.background = element_blank())+
+  guides(fill=guide_legend(ncol=2,byrow=TRUE, override.aes = list(alpha = 0.6)))
 
 cwm.density.a <- ggMarginal(cwm.a,
                             type = "density",
                             size = 10,
                             groupColour = TRUE, 
                             groupFill = TRUE)
+
+ggsave(filename = "figures jpg/CaribbeanPCA1_PCA2_CWM.jpg", plot = cwm.density.a,
+       dpi = 300, 
+       width = 5, height = 5, units = "in")
 
 ## Figure CWM-c - PC2-PC3 Caribbean ####
 summary(carib.pca.cwm.values[,8:10])
@@ -166,25 +233,31 @@ cwm.c <- ggplot(carib.pca.cwm.values) +
                  color = subregion), 
              alpha = 0.0001,
              shape = 21) +
+  facet_wrap(vars(subregion))+
   geom_star(aes(x = PC2, 
                 y = PC3, 
-                fill = subregion,
-                color = subregion), 
+                fill = subregion, 
+                size = spp_richness), 
             alpha = 0.3,
             starshape = 6) +
+  geom_density2d(aes(x = PC2, y = PC3,
+                     color = subregion), 
+                 alpha = 0.5, bins = 5)+
   scale_shape_manual(values = c(21,22))+
-  scale_fill_manual(values = c("#E3E418",
-                               "#481F70",
-                               "#35B779",
-                               "#21908C",
-                               "#A1A1A1"))+
-  scale_color_manual(values = c("#E3E418",
-                                "#481F70",
-                                "#35B779",
-                                "#21908C",
-                                "#A1A1A1"))+
-  scale_x_continuous(limits = c(-8.5,9))+
-  scale_y_continuous(limits = c(-6,6))+
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#aadce0",
+                               "#376795",
+                               "#ef8a47"))+
+  scale_color_manual(values = c("#A1A1A1",
+                                "#663171",
+                                
+                                "#aadce0",
+                                "#376795",
+                                "#ef8a47"))+
+  scale_x_continuous(limits = c(-6,6))+
+  scale_y_continuous(limits = c(-6.1,6.1))+
   coord_fixed()+
 #  geom_segment(data = carib.pca.cwm.loadings, 
 #               size = 0.25,
@@ -193,24 +266,30 @@ cwm.c <- ggplot(carib.pca.cwm.values) +
 #               arrow = arrow(length = unit(0.1, "cm")),
 #               colour = "black") +
   geom_text_repel(data = carib.pca.cwm.loadings, 
-                  aes(x = PC2*12, y = PC3*12, 
+                  aes(x = PC2*6, y = PC3*6, 
                       label = Variables),
                   size = 3) + 
-  labs(x = "PC2 (13.47%)",
-       y = "PC3 (12.04%)",
+  labs(x = "PC2 (14.42%)",
+       y = "PC3 (12.92%)",
  #      title = expression(bold("c")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
   theme(legend.position = "none",
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
-        panel.border=element_rect(fill=NA,colour="grey50"))
+        panel.border=element_rect(fill=NA,colour="grey50"), 
+        strip.background = element_blank())+
+  guides(fill=guide_legend(ncol = 2,byrow=TRUE, override.aes = list(alpha = 0.6)))
 
 cwm.density.c <- ggMarginal(cwm.c,
                             type = "density",
                             size = 10,
                             groupColour = TRUE, 
                             groupFill = TRUE)
+
+ggsave(filename = "figures jpg/CaribbeanPCA2_PCA3_CWM.jpg", plot = cwm.density.c,
+       dpi = 300, 
+       width = 5, height = 5, units = "in")
 
 # PCA Indo-Pacific CWM ####
 table(islands_cwm_mu_sem$Meta_Archipelago)
@@ -222,9 +301,12 @@ orinma_cwm <- islands_cwm_mu_sem |>
               dplyr::select(cell,longitude, latitude) |> 
               group_by(cell) |> 
               summarize(longitude = mean(longitude),
-                        latitude = mean(latitude)))
+                        latitude = mean(latitude))) |>
+  filter(subregion != "Vanuatu",
+         subregion != "Solomons",
+         latitude > -10)
 
-funspaceDim(scale(log10(orinma_cwm[,c(5:14,17:20)]))) # 2 dimensions
+funspaceDim(scale(log10(orinma_cwm[,c(5:14,17:20)]))) # 3 dimensions
 
 orinma.pca.cwm <- prcomp(scale(log10(orinma_cwm[,c(5:14,17:20)])))
 
@@ -239,9 +321,8 @@ orinma.pca.cwm.values <- data.frame(cell = orinma_cwm$cell,
 
 orinma.pca.cwm.loadings <- data.frame(Variables = rownames(orinma.pca.cwm$rotation), orinma.pca.cwm$rotation)
 
-## Figure CWM-b - PC1-PC2 OrInMa ####
-summary(orinma.pca.cwm.values[,8:10])
-summary(orinma.pca.cwm)
+aload <- abs(orinma.pca.cwm$rotation)
+sweep(aload, 2, colSums(aload), "/")
 
 table(orinma.pca.cwm.values$subregion)
 
@@ -252,9 +333,50 @@ orinma.pca.cwm.values$subregion <- factor(orinma.pca.cwm.values$subregion,
                                                      "Sunda islands",
                                                      "Philippines",
                                                      "Wallacea",
-                                                     "Papua",
-                                                     "Solomons",
-                                                     "Vanuatu"))
+                                                     "Papua"),
+                                          labels = c("Mainland",
+                                                     "Continental islands",
+                                                     "Andaman & Nicobar",
+                                                     "Sunda islands",
+                                                     "Philippines",
+                                                     "Wallacea",
+                                                     "New Guinea"))
+
+indop <- ggpairs(orinma.pca.cwm.values,
+                  columns = 8:10,
+                  aes(color = subregion,
+                      fill = subregion,
+                      alpha = 0.001),
+                  upper = list(continuous = wrap("density", alpha = 0.1, bins = 8)))+
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156"))+
+  scale_color_manual(values = c("#A1A1A1",
+                                "#663171",
+                                
+                                "#BA3841",
+                                "#DF5C2D",
+                                "#E6824F",
+                                "#B7917F",
+                                "#0C7156"))+
+  theme(legend.position = "bottom",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"), 
+        strip.background = element_blank())
+
+saveRDS(indop, "figures jpg/IndoP_PC1PC3.RDS")
+
+## Figure CWM-b - PC1-PC2 OrInMa ####
+summary(orinma.pca.cwm.values[,8:10])
+summary(orinma.pca.cwm)
+
+
 
 cwm.b <- ggplot(orinma.pca.cwm.values) +
   geom_point(aes(x = PC1, 
@@ -277,8 +399,6 @@ cwm.b <- ggplot(orinma.pca.cwm.values) +
                                "#66c2a5",
                                                     
                                "#0868ac",
-                               "#43a2ca",
-                               "#7bccc4",
                                "#a8ddb5"))+
   scale_color_manual(values = c("#A1A1A1",
                                 "#481F70",
@@ -288,8 +408,6 @@ cwm.b <- ggplot(orinma.pca.cwm.values) +
                                 "#66c2a5",
                                 
                                 "#0868ac",
-                                "#43a2ca",
-                                "#7bccc4",
                                 "#a8ddb5"))+
   scale_x_continuous(limits = c(-8.5,9))+
   scale_y_continuous(limits = c(-6,6))+
@@ -304,22 +422,25 @@ cwm.b <- ggplot(orinma.pca.cwm.values) +
                   aes(x = PC1*8, y = PC2*8, 
                       label = Variables),
                   size = 3) + 
-  labs(x = "PC1 (54.31%)",
-       y = "PC2 (25.33%)",
+  labs(x = "PC1 (59.37%)",
+       y = "PC2 (16.66%)",
  #      title = expression(bold("b")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
-  theme(legend.position = "none",
+  theme(legend.position = "bottom",
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
         panel.border=element_rect(fill=NA,colour="grey50"))+
-  guides(fill=guide_legend(nrow=2,byrow=TRUE))
+  guides(fill=guide_legend(nrow = 3,byrow=TRUE, override.aes = list(alpha = 0.6)))
 
 cwm.density.b <- ggMarginal(cwm.b,
                             type = "density",
                             size = 10,
                             groupColour = TRUE, 
                             groupFill = TRUE)
+ggsave(filename = "figures jpg/IndoPacificPCA1_PCA2_CWM.jpg", plot = cwm.density.b,
+       dpi = 300, 
+       width = 5, height = 5, units = "in")
 
 ## Figure CWM-d - PC2-PC3 OrInMa ####
 summary(orinma.pca.cwm.values[,8:10])
@@ -338,18 +459,26 @@ cwm.d <- ggplot(orinma.pca.cwm.values) +
                 color = subregion), 
             alpha = 0.3,
             starshape = 6) +
-  scale_fill_manual(values = c("#D44292",
-                               "#952EA0",
-                               "#A1A1A1",
-                               "#F6A97A",
-                               "#F66D7A"))+
-  scale_color_manual(values = c("#D44292",
-                                "#952EA0",
-                                "#A1A1A1",
-                                "#F6A97A",
-                                "#F66D7A"))+
-  scale_x_continuous(limits = c(-10,10))+
-  scale_y_continuous(limits = c(-10,10))+
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#481F70",
+                               
+                               "#fc8d62",
+                               "#8da0cb",
+                               "#66c2a5",
+                               
+                               "#0868ac",
+                               "#a8ddb5"))+
+  scale_color_manual(values = c("#A1A1A1",
+                                "#481F70",
+                                
+                                "#fc8d62",
+                                "#8da0cb",
+                                "#66c2a5",
+                                
+                                "#0868ac",
+                                "#a8ddb5"))+
+  scale_x_continuous(limits = c(-6,6))+
+  scale_y_continuous(limits = c(-6.1,6.1))+
   coord_fixed()+
 #  geom_segment(data = orinma.pca.cwm.loadings, 
 #               size = 0.25,
@@ -358,19 +487,19 @@ cwm.d <- ggplot(orinma.pca.cwm.values) +
 #               arrow = arrow(length = unit(0.1, "cm")),
 #               colour = "black") +
   geom_text_repel(data = orinma.pca.cwm.loadings, 
-                  aes(x = PC2*12, y = PC3*12, 
+                  aes(x = PC2*8, y = PC3*8, 
                       label = Variables),
                   size = 3) + 
-  labs(x = "PC2 (15.24%)",
-       y = "PC3 (8.77%)",
+  labs(x = "PC2 (16.66%)",
+       y = "PC3 (8.48%)",
 #       title = expression(bold("d")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
-  theme(legend.position = "none",
+  theme(legend.position = "bottom",
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
         panel.border=element_rect(fill=NA,colour="grey50"))+
-  guides(fill=guide_legend(nrow=2,byrow=TRUE))
+  guides(fill=guide_legend(nrow = 3,byrow=TRUE, override.aes = list(alpha = 0.6)))
 
 cwm.density.d <- ggMarginal(cwm.d,
                             type = "density",
@@ -378,13 +507,17 @@ cwm.density.d <- ggMarginal(cwm.d,
                             groupColour = TRUE, 
                             groupFill = TRUE)
 
+ggsave(filename = "figures jpg/IndoPacificPCA2_PCA3_CWM.jpg", plot = cwm.density.d,
+       dpi = 300, 
+       width = 5, height = 5, units = "in")
+
 # Combine figure CWM a-b ####
 
 Figure.CWM <- grid.arrange(cwm.density.a, cwm.density.b,
                           # cwm.density.c, cwm.density.d,
                            ncol = 2)
 
-ggsave(filename = "PCA1_PCA2_CWM.jpg", plot = Figure.CWM,
+ggsave(filename = "figures jpg/PCA1_PCA2_CWM.jpg", plot = Figure.CWM,
        dpi = 300, 
        width = 10, height = 5, units = "in")
 
@@ -872,11 +1005,11 @@ wrapped_gridCaribbean <- wrapped_gridCaribbean[wrapped_gridCaribbean$seqnum %in%
 
 wrapped_gridIndoPacific <- wrapped_gridIndoPacific |>
   mutate(cell = as.character(seqnum)) |>
-  left_join(orinma_cwm)
+  left_join(orinma_cwm) 
 
 wrapped_gridCaribbean <- wrapped_gridCaribbean |>
   mutate(cell = as.character(seqnum)) |>
-  left_join(caribbean_cwm)
+  left_join(caribbean_cwm) 
 
 world1 <- sf::st_as_sf(maps::map(database = 'world', plot = FALSE, fill = TRUE))
 world1
@@ -884,8 +1017,7 @@ world1
 # OrInMa
 mapOrInMa <- ggplot()+
   geom_sf(data=world1)+
-  geom_sf(data=wrapped_gridIndoPacific |> filter(subregion != "Vanuatu", 
-                                                 subregion != "Solomons"), 
+  geom_sf(data=wrapped_gridIndoPacific, 
           aes(fill = factor(subregion,
                             levels = c("Mainland",
                                        "Continental islands",
@@ -902,18 +1034,18 @@ mapOrInMa <- ggplot()+
                                         "Philippines",
                                         "Wallacea",
                                         "Papua"))))+
-  coord_sf(ylim=c(-11,19),
-           xlim=c(94,150.5
-                  ))+
-  scale_fill_manual(values = c("#A1A1A160",
-                               "#481F7060",
+  coord_sf(ylim=c(-11,19),xlim=c(94,150.5))+
+  #coord_sf(ylim=c(-20,20),xlim=c(92,170))+
+  scale_fill_manual(values = c("#A1A1A190",
+                               "#481F7070",
                                
-                               "#fc8d6260",
-                               "#8da0cb60",
-                               "#66c2a560",
+                               "#fc8d6270",
+                               "#8da0cb70",
+                               "#66c2a570",
                                
-                               "#0868ac60",
-                               "#43a2ca60"),
+                               "#0868ac70",
+                               
+                               "#a8ddb570"),
                     labels = c("Mainland",
                                "Continental islands",
                                "Andaman & Nicobar",
@@ -929,7 +1061,8 @@ mapOrInMa <- ggplot()+
                                 "#66c2a5",
                                 
                                 "#0868ac",
-                                "#43a2ca"),
+                                
+                                "#a8ddb5"),
                      labels = c("Mainland",
                                 "Continental islands",
                                 "Andaman & Nicobar",
@@ -940,7 +1073,7 @@ mapOrInMa <- ggplot()+
   labs(x = "Longitude",
        y = "Latitude",
        title = "East Indo-Pacific",
-       subtitle = "n = 649",
+       subtitle = "n = 447",
        fill = "",
        color = "")+
   theme_classic()+
@@ -948,6 +1081,10 @@ mapOrInMa <- ggplot()+
         legend.position.inside = c(0.8,0.9))+
   guides(color = guide_legend(ncol = 2),
          fill = guide_legend(ncol = 2))
+# Save maps
+ggsave(filename = "figures jpg/OrInMa_Map_Hexagons.jpg", plot = mapOrInMa,
+       dpi = 300, 
+       width = 7, height = 5, units = "in")
 
 # Caribbean
 mapCarib <- ggplot()+
@@ -967,11 +1104,12 @@ mapCarib <- ggplot()+
                                         "Lesser Antilles (Kalinago)"))))+
   coord_sf(ylim=c(8,26.5),
            xlim=c(-92,-59))+
-  scale_fill_manual(values = c("#A1A1A160",
-                               "#481F7060",
-                               "#E3E41860",
-                               "#35B77960",
-                               "#21908C60"),
+#  geom_hline(yintercept = 24)+geom_vline(xintercept = -79.5)+
+  scale_fill_manual(values = c("#A1A1A190",
+                               "#481F7070",
+                               "#E3E41870",
+                               "#35B77970",
+                               "#21908C70"),
                     labels = c("Mainland",
                                "Continental islands",
                                "Bahamas \n(Lucayan)",
@@ -990,7 +1128,7 @@ mapCarib <- ggplot()+
   labs(x = "Longitude",
        y = "Latitude",
        title = "Caribbean",
-       subtitle = "n = 1903",
+       subtitle = "n = 1682",
        fill = "",
        color = "")+
   theme_classic()+
@@ -999,10 +1137,6 @@ mapCarib <- ggplot()+
   guides(color = guide_legend(ncol = 2),
          fill = guide_legend(ncol = 2))
 
-# Save maps
-ggsave(filename = "OrInMa_Map_Hexagons.jpg", plot = mapOrInMa,
-       dpi = 300, 
-       width = 7, height = 5, units = "in")
 
 ggsave(filename = "Carib_Map_Hexagons.jpg", plot = mapCarib,
        dpi = 300, 
