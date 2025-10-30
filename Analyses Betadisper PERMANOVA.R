@@ -40,6 +40,8 @@ orinma.disp_df <- data.frame(distances = orinma.bd$distances,
                       subregion = orinma.pca.cwm.values$subregion)
 
 # compare models
+orinma.mod.Null <- glm(distances ~ 1, 
+                       data = orinma.disp_df)
 orinma.mod.Subr <- glm(distances ~ subregion, 
                       data = orinma.disp_df)
 orinma.mod.Sm <- glm(distances ~ spp_richness, 
@@ -50,15 +52,19 @@ orinma.mod.Sm.Subr <- glm(distances ~ spp_richness*subregion,
                          data = orinma.disp_df)
 orinma.mod.Pm.Subr <- glm(distances ~ pred_richness*subregion, 
                          data = orinma.disp_df)
-AICcmodavg::aictab(cand.set = list(orinma.mod.Subr,
+AICcmodavg::aictab(cand.set = list(orinma.mod.Null, 
+                                   orinma.mod.Subr,
                                    orinma.mod.Sm, 
                                    orinma.mod.Pm,
                                    orinma.mod.Sm.Subr,
                                    orinma.mod.Pm.Subr),
-                   modnames = c("Subregion","Sm","Pm","Sm_Subregion","Pm_Subregion"))
+                   modnames = c("Null", "Subregion","Sm","Pm","Sm_Subregion","Pm_Subregion"))
 
-summary(orinma.mod.Sm.Subr)
-summary(orinma.mod.Subr)
+summary(orinma.mod.Sm.Subr)#AICcWt 0.92!
+
+#∆AIC = 5.09:
+summary(orinma.mod.Subr) 
+
 
 ## Figures Euclidean distance (Variance - dispersion) ####
 ggplot(orinma.disp_df, aes(x = subregion,
@@ -125,19 +131,70 @@ Dispersion_Sm_IndoP <- ggplot(orinma.disp_df, aes(x = spp_richness,
   labs(x = "Bird species richness",
        y = "Euclidean distance from centroid",
        title = "Expansion - Eastern Indo-Pacific",
-       fill = "Archipelago \n(subregion)",
-       color = "Archipelago \n(subregion)",
-       linetype = "Archipelago \n(subregion)")+
-  theme(legend.position = "bottom",
+       fill = "",
+       color = "",
+       linetype = "")+
+  theme(legend.position = "right",
+        legend.background = element_blank(),
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
         panel.border=element_rect(fill=NA,colour="grey50"))+
-  guides(fill=guide_legend(nrow=2,byrow=TRUE),
-         color=guide_legend(nrow=2,byrow=TRUE),
-         linetype=guide_legend(nrow=2,byrow=TRUE))
+  guides(fill=guide_legend(ncol=2,byrow=TRUE),
+         color=guide_legend(ncol=2,byrow=TRUE),
+         linetype=guide_legend(ncol=2,byrow=TRUE))
 Dispersion_Sm_IndoP
 ggsave(filename = "figures jpg/Dispersion_Sm_IndoP.jpg",Dispersion_Sm_IndoP,
+       width = 14, height = 4, units = "in", dpi = 300)
+
+ggplot(orinma.disp_df, aes(x = spp_richness,
+                           y = distances,
+                           fill = subregion,
+                           color = subregion,
+                           linetype = subregion))+
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156"))+
+  scale_color_manual(values = c("#A1A1A1",
+                                "#663171",
+                                
+                                "#BA3841",
+                                "#DF5C2D",
+                                "#E6824F",
+                                "#B7917F",
+                                "#0C7156"))+
+  geom_smooth(method = "lm", se = TRUE, alpha = 0.1)+
+  scale_linetype_manual(values = c("solid",
+                                   "dashed",
+                                   
+                                   "dotted",
+                                   "dotted",
+                                   "solid",
+                                   "dotted",
+                                   "dotted"))+
+  geom_point(alpha = 0.1, shape = 21)+
+  labs(x = "Bird species richness",
+       y = "Euclidean distance from centroid",
+       title = "Expansion - Eastern Indo-Pacific",
+       fill = "",
+       color = "",
+       linetype = "")+
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.75,0.85),
+        legend.background = element_blank(),
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))+
+  guides(fill=guide_legend(ncol=2,byrow=TRUE),
+         color=guide_legend(ncol=2,byrow=TRUE),
+         linetype=guide_legend(ncol=2,byrow=TRUE))
+ggsave(filename = "figures jpg/Dispersion_Sm_IndoP.jpg",
        width = 8, height = 4, units = "in")
+
 
 summary(orinma.mod.Subr)
 Dispersion_Region_IndoP <- ggplot(orinma.disp_df, aes(x = subregion,
@@ -171,10 +228,12 @@ Dispersion_Region_IndoP
 ggsave(filename = "figures jpg/Dispersion_Region_IndoP.jpg",Dispersion_Region_IndoP,
        width = 8, height = 4, units = "in")
 
+
 ggplot(orinma.disp_df, aes(x = pred_richness,
                            y = distances,
                            fill = subregion,
-                           color = subregion))+
+                           color = subregion, 
+                           linetype = subregion))+
   scale_fill_manual(values = c("#A1A1A1",
                                "#663171",
                                
@@ -193,18 +252,30 @@ ggplot(orinma.disp_df, aes(x = pred_richness,
                                 "#0C7156"))+
   geom_point(alpha = 0.15, shape = 21, position = position_jitter(width = 0.2))+
   geom_smooth(method = "lm", se = TRUE, alpha = 0.1)+
+  scale_linetype_manual(values = c("dotted",
+                                   "dotted",
+                                   
+                                   "dotted",
+                                   "dotted",
+                                   "dotted",
+                                   "dashed",
+                                   "dotted"))+
   labs(x = "Bird predators species richness",
        y = "Euclidean distance from centroid",
        title = "Expansion - Eastern Indo-Pacific",
-       fill = "Archipelago \n(subregion)",
-       color = "Archipelago \n(subregion)")+
-  theme(legend.position = "bottom",
+       fill = "",
+       color = "", 
+       linetype = "")+
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.75,0.85),
+        legend.background = element_blank(),
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
         panel.border=element_rect(fill=NA,colour="grey50"))+
-  coord_cartesian(ylim = c(0,10))+
-  guides(fill=guide_legend(nrow=2,byrow=TRUE),
-         color=guide_legend(nrow=2,byrow=TRUE))
+  guides(fill=guide_legend(ncol=2,byrow=TRUE),
+         color=guide_legend(ncol=2,byrow=TRUE),
+         linetype=guide_legend(ncol=2,byrow=TRUE))
+
 ggsave(filename = "figures jpg/Dispersion_Pm_IndoP.jpg",
        width = 8, height = 4, units = "in")
 
@@ -219,6 +290,8 @@ carib.disp_df <- data.frame(distances = carib.bd$distances,
                              subregion = carib.pca.cwm.values$subregion)
 
 # compare models
+carib.mod.Null <- glm(distances ~ 1, 
+                      data = carib.disp_df)
 carib.mod.Subr <- glm(distances ~ subregion, 
                     data = carib.disp_df)
 carib.mod.Sm <- glm(distances ~ spp_richness, 
@@ -229,15 +302,16 @@ carib.mod.Sm.Subr <- glm(distances ~ spp_richness*subregion,
                     data = carib.disp_df)
 carib.mod.Pm.Subr <- glm(distances ~ pred_richness*subregion, 
                     data = carib.disp_df)
-AICcmodavg::aictab(cand.set = list(carib.mod.Subr,
+AICcmodavg::aictab(cand.set = list(carib.mod.Null, 
+                                   carib.mod.Subr,
                                    carib.mod.Sm, 
                                    carib.mod.Pm,
                                    carib.mod.Sm.Subr,
                                    carib.mod.Pm.Subr),
-                   modnames = c("Subregion","Sm","Pm","Sm_Subregion","Pm_Subregion"))
+                   modnames = c("Null", "Subregion","Sm","Pm","Sm_Subregion","Pm_Subregion"))
 
-summary(carib.mod.Sm.Subr)
 summary(carib.mod.Pm.Subr)
+summary(carib.mod.Sm.Subr)
 
 ## Figures Euclidean distance (Variance - Dispersion) ####
 ggplot(carib.disp_df, aes(x = subregion,
@@ -294,19 +368,21 @@ Dispersion_Pm_Carib <- ggplot(carib.disp_df, aes(x = pred_richness,
   labs(x = "Bird predators species richness",
        y = "Euclidean distance from centroid",
        title = "Expansion - Caribbean",
-       fill = "Archipelago \n(subregion)",
-       color = "Archipelago \n(subregion)",
-       linetype = "Archipelago \n(subregion)")+
-  theme(legend.position = "bottom",
+       fill = "",
+       color = "",
+       linetype = "")+
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.75,0.9),
+        legend.background = element_blank(),
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
         panel.border=element_rect(fill=NA,colour="grey50"))+
-  guides(fill=guide_legend(nrow=2,byrow=TRUE),
-         color=guide_legend(nrow=2,byrow=TRUE),
-         linetype=guide_legend(nrow=2,byrow=TRUE))
+  guides(fill=guide_legend(ncol =2,byrow=TRUE),
+         color=guide_legend(ncol=2,byrow=TRUE),
+         linetype=guide_legend(ncol=2,byrow=TRUE))
 Dispersion_Pm_Carib
 ggsave(filename = "figures jpg/Dispersion_Pm_Carib.jpg",Dispersion_Pm_Carib,
-       width = 8, height = 4, units = "in")
+       width = 7, height = 4, units = "in", dpi = 300)
 
 summary(carib.mod.Sm.Subr)
 Dispersion_Sm_Carib <- ggplot(carib.disp_df, aes(x = spp_richness,
@@ -342,7 +418,7 @@ Dispersion_Sm_Carib <- ggplot(carib.disp_df, aes(x = spp_richness,
        color = "",
        linetype = "")+
   theme(legend.position = "inside",
-        legend.position.inside = c(0.775,0.9),
+        legend.position.inside = c(0.75,0.9),
         legend.background = element_blank(),
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
@@ -352,8 +428,7 @@ Dispersion_Sm_Carib <- ggplot(carib.disp_df, aes(x = spp_richness,
          linetype=guide_legend(nrow=3,byrow=TRUE))
 Dispersion_Sm_Carib
 ggsave(filename = "figures jpg/Dispersion_Sm_Carib.jpg",Dispersion_Sm_Carib,
-       width = 8, height = 4, units = "in")
-
+       width = 7, height = 4, units = "in", dpi = 300)
 
 ggplot(carib.disp_df, aes(x = subregion,
                            y = distances,
@@ -478,21 +553,44 @@ summary(orinma.PC1.mod.Sm.Subr)
 summary(orinma.PC2.mod.Sm.Subr)
 summary(orinma.PC3.mod.Sm.Subr)
 
-
 ## Figures mean per region PC1-PC3 IndoPacific ####
 names(orinma.pca.cwm.values)
+
+# Define new labels
+PC_labels_IndoP <- c("PC1" = " PC1\n(59.37%)",
+                     "PC2" = "PC2\n(16.66%)",
+                     "PC3" = "PC3\n(8.48%)")
+
+
 Shift_Region_IndoP <- orinma.pca.cwm.values |>
-  dplyr::select(c(cell, Meta_Archipelago, region, subregion, fig_group, 
-                  spp_richness, pred_richness, PC1, PC2, PC3))|>
+  dplyr::select(cell, Meta_Archipelago, region, subregion, fig_group, 
+                spp_richness, pred_richness, PC1, PC2, PC3) |>
   pivot_longer(cols = c(PC1, PC2, PC3)) |>
+  mutate(linetype = case_when(
+    # PC1 rules
+    name == "PC1" & subregion %in% c("Mainland", "Andaman & Nicobar", "Sunda islands", "Philippines") ~ "solid",
+    name == "PC1" & subregion %in% c("Continental islands", "New Guinea") ~ "dotted",
+    name == "PC1" & subregion == "Wallacea" ~ "dashed",
+    
+    # PC2 rules
+    name == "PC2" & subregion %in% c("Mainland", "Sunda islands", "New Guinea") ~ "solid",
+    name == "PC2" & subregion %in% c("Continental islands", "Andaman & Nicobar", "Philippines", "Wallacea") ~ "dotted",
+    
+    # PC3 rules
+    name == "PC3" & subregion %in% c("Mainland", "Sunda islands") ~ "solid",
+    name == "PC3" & subregion %in% c("Continental islands", "Andaman & Nicobar", "Philippines", "Wallacea", "New Guinea") ~ "dotted",
+    
+    TRUE ~ "solid"  # fallback
+  )) |> 
   ggplot(aes(x = spp_richness,
              y = value,
              fill = subregion,
-             color = subregion))+
-  facet_wrap(~name, scales = "free_y", ncol = 1) +
-  geom_point(position = position_jitter(width = 0.1), alpha = 0.1)+
-#  stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
-#  stat_summary(fun = "mean", geom = "point", size = 2, color = "black", shape = 21) +
+             color = subregion)) +
+  facet_wrap(~name, scales = "free_y", ncol = 1, 
+             labeller = as_labeller(PC_labels_IndoP)) +
+  geom_point(position = position_jitter(width = 0.1), alpha = 0.1) +
+  geom_smooth(aes(linetype = linetype), method = "lm", se = TRUE, alpha = 0.1) +
+  scale_linetype_identity() +
   scale_fill_manual(values = c("#A1A1A1",
                                "#663171",
                                
@@ -509,17 +607,23 @@ Shift_Region_IndoP <- orinma.pca.cwm.values |>
                                 "#E6824F",
                                 "#B7917F",
                                 "#0C7156"))+
-  geom_smooth(method = "lm", se = TRUE, alpha = 0.1)+
   labs(x = "Species richness",
        y = "Score", 
-       title = "Shift - Eastern Indo-Pacific")+
+       title = "Shift of PC score with species richness",
+       subtitle = "Eastern Indo-Pacific")+
   theme_classic() +
-  theme(legend.position = "none", 
-        axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(legend.position = "left",
+        legend.title = element_blank(),
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"),
+        strip.background = element_blank())
+
 Shift_Region_IndoP
 ggsave(filename = "figures jpg/Shift_Region_IndoP.jpg",Shift_Region_IndoP,
-       width = 5, height = 7, units = "in")
+       width = 6, height = 7, units = "in", dpi = 300)
 ## Pairwise adonis - PERMANOVA Caribbean ####
+Carib.PERMA <- readRDS("Completeness_data_Islands/Carib.PERMA.rds")
 
 Carib.PERMA <- pairwise.adonis2(carib.pca.cwm.values[,8:10] ~ subregion + spp_richness + pred_richness, 
                                 data = carib.pca.cwm.values, 
@@ -546,6 +650,8 @@ print(xtable(Carib_pairwise_result, digits = 3), include.rownames = FALSE)
 saveRDS(Carib.PERMA, "Completeness_data_Islands/Carib.PERMA.rds")
 
 # compare models
+Carib.PC1.mod.Null <- glm(PC1 ~ 1, 
+                          data = carib.pca.cwm.values)
 Carib.PC1.mod.Subr <- glm(PC1 ~ subregion, 
                        data = carib.pca.cwm.values)
 Carib.PC1.mod.Sm <- glm(PC1 ~ spp_richness, 
@@ -557,6 +663,8 @@ Carib.PC1.mod.Sm.Subr <- glm(PC1 ~ spp_richness*subregion,
 Carib.PC1.mod.Pm.Subr <- glm(PC1 ~ pred_richness*subregion, 
                           data = carib.pca.cwm.values)
 
+Carib.PC2.mod.Null <- glm(PC2 ~ 1, 
+                          data = carib.pca.cwm.values)
 Carib.PC2.mod.Subr <- glm(PC2 ~ subregion, 
                           data = carib.pca.cwm.values)
 Carib.PC2.mod.Sm <- glm(PC2 ~ spp_richness, 
@@ -568,6 +676,8 @@ Carib.PC2.mod.Sm.Subr <- glm(PC2 ~ spp_richness*subregion,
 Carib.PC2.mod.Pm.Subr <- glm(PC2 ~ pred_richness*subregion, 
                              data = carib.pca.cwm.values)
 
+Carib.PC3.mod.Null <- glm(PC3 ~ 1, 
+                          data = carib.pca.cwm.values)
 Carib.PC3.mod.Subr <- glm(PC3 ~ subregion, 
                           data = carib.pca.cwm.values)
 Carib.PC3.mod.Sm <- glm(PC3 ~ spp_richness, 
@@ -579,26 +689,29 @@ Carib.PC3.mod.Sm.Subr <- glm(PC3 ~ spp_richness*subregion,
 Carib.PC3.mod.Pm.Subr <- glm(PC3 ~ pred_richness*subregion, 
                              data = carib.pca.cwm.values)
 
-AICcmodavg::aictab(cand.set = list(Carib.PC1.mod.Subr,
+AICcmodavg::aictab(cand.set = list(Carib.PC1.mod.Null,
+                                   Carib.PC1.mod.Subr,
                                    Carib.PC1.mod.Sm, 
                                    Carib.PC1.mod.Pm,
                                    Carib.PC1.mod.Sm.Subr,
                                    Carib.PC1.mod.Pm.Subr),
-                   modnames = c("Subregion.PC1","Sm.PC1","Pm.PC1","Sm_Subregion.PC1","Pm_Subregion.PC1"))
+                   modnames = c("Null", "Subregion.PC1","Sm.PC1","Pm.PC1","Sm_Subregion.PC1","Pm_Subregion.PC1"))
 
-AICcmodavg::aictab(cand.set = list(Carib.PC2.mod.Subr,
+AICcmodavg::aictab(cand.set = list(Carib.PC2.mod.Null, 
+                                   Carib.PC2.mod.Subr,
                                    Carib.PC2.mod.Sm, 
                                    Carib.PC2.mod.Pm,
                                    Carib.PC2.mod.Sm.Subr,
                                    Carib.PC2.mod.Pm.Subr),
-                   modnames = c("Subregion.PC2","Sm.PC2","Pm.PC2","Sm_Subregion.PC2","Pm_Subregion.PC2"))
+                   modnames = c("Null", "Subregion.PC2","Sm.PC2","Pm.PC2","Sm_Subregion.PC2","Pm_Subregion.PC2"))
 
-AICcmodavg::aictab(cand.set = list(Carib.PC3.mod.Subr,
+AICcmodavg::aictab(cand.set = list(Carib.PC3.mod.Null, 
+                                   Carib.PC3.mod.Subr,
                                    Carib.PC3.mod.Sm, 
                                    Carib.PC3.mod.Pm,
                                    Carib.PC3.mod.Sm.Subr,
                                    Carib.PC3.mod.Pm.Subr),
-                   modnames = c("Subregion.PC3","Sm.PC3","Pm.PC3","Sm_Subregion.PC3","Pm_Subregion.PC3"))
+                   modnames = c("Null", "Subregion.PC3","Sm.PC3","Pm.PC3","Sm_Subregion.PC3","Pm_Subregion.PC3"))
 
 summary(Carib.PC1.mod.Sm.Subr)
 summary(Carib.PC2.mod.Sm.Subr)
@@ -607,76 +720,53 @@ summary(Carib.PC3.mod.Sm.Subr)
 ## Figures mean per region PC1-PC3 Caribbean ####
 names(carib.pca.cwm.values)
 
+# Define new labels
+PC_labels_Carib <- c("PC1" = " PC1\n(55.63%)",
+                     "PC2" = "PC2\n(14.42%)",
+                     "PC3" = "PC3\n(12.92%)")
 
 
 Shift_Region_Carib <- carib.pca.cwm.values |>
-  dplyr::select(c(cell, Meta_Archipelago, region, subregion, fig_group, 
-                  spp_richness, pred_richness, PC1, PC2, PC3))|>
+  dplyr::select(cell, Meta_Archipelago, region, subregion, fig_group, 
+                spp_richness, pred_richness, PC1, PC2, PC3) |>
   pivot_longer(cols = c(PC1, PC2, PC3)) |>
+  mutate(linetype = case_when(
+    # PC1 rules
+    name == "PC1" & subregion %in% c("Mainland", "Lesser Antilles (Kalinago)", "Greater Antilles", "Bahamas (Lucayan)") ~ "solid",
+    name == "PC1" & subregion == "Continental islands" ~ "dotted",
+    
+    # PC2 rules
+    name == "PC2" & subregion %in% c("Mainland", "Lesser Antilles (Kalinago)", "Greater Antilles") ~ "solid",
+    name == "PC2" & subregion %in% c("Continental islands", "Bahamas (Lucayan)") ~ "dotted",
+    
+    # PC3 rules
+    name == "PC3" & subregion == "Mainland" ~ "solid",
+    name == "PC3" & subregion %in% c("Continental islands", "Bahamas (Lucayan)", "Lesser Antilles (Kalinago)", "Greater Antilles") ~ "dotted",
+    
+    TRUE ~ "solid"  # fallback
+  )) |>
   ggplot(aes(x = spp_richness,
              y = value,
              fill = subregion,
-             color = subregion, 
-             linetype = subregion))+
-  facet_wrap(~name, scales = "free_y", ncol = 1) +
-  geom_point(position = position_jitter(width = 0.1), alpha = 0.05)+
-  #stat_summary(fun.data = "mean_cl_normal", geom = "errorbar", width = 0.1, color = "black")+
-  #stat_summary(fun = "mean", geom = "point", size = 2, shape = 21, color = "black") +
-  scale_fill_manual(values=c("#A1A1A1",
-                             "#663171",
-                             
-                             "#aadce0",
-                             "#376795",
-                             "#ef8a47"))+
-  scale_color_manual(values=c("#A1A1A1",
-                              "#663171",
-                              
-                              "#aadce0",
-                              "#376795",
-                              "#ef8a47"))+
-  scale_linetype_manual(values=c("solid",
-                                 "dotted",
-                                 "solid",
-                                 "solid",
-                                 "solid"))+
-  geom_smooth(method = "lm", se = TRUE, alpha = 0.1)+
+             color = subregion)) +
+  facet_wrap(~name, scales = "free_y", ncol = 1, 
+             labeller = as_labeller(PC_labels_Carib)) +
+  geom_point(position = position_jitter(width = 0.1), alpha = 0.1) +
+  geom_smooth(aes(linetype = linetype), method = "lm", se = TRUE, alpha = 0.1) +
+  scale_linetype_identity() +
+  scale_fill_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  scale_color_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
   labs(x = "Species richness",
        y = "Score",
-       title = "Shift - Caribbean")+
+       title = "Shift – Caribbean") +
   theme_classic() +
-  theme(legend.position = "none", 
-        axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(legend.position = "left",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"),
+        strip.background = element_blank())
+
 Shift_Region_Carib
 ggsave(filename = "figures jpg/Shift_Region_Carib.jpg",Shift_Region_Carib,
-       width = 5, height = 7, units = "in")
+       width = 6, height = 7, units = "in", dpi = 300)
 
-# Figure combined ####
-
-Dispersion_Sm_Carib <- Dispersion_Sm_Carib +
-  theme(plot.tag = element_text(face = "bold"), 
-        legend.position = "none")
-
-Dispersion_Region_IndoP <- Dispersion_Region_IndoP +
-  theme(plot.tag = element_text(face = "bold"))
-
-Shift_Region_Carib <- Shift_Region_Carib +
-  theme(plot.tag = element_text(face = "bold"))
-
-Shift_Region_IndoP <- Shift_Region_IndoP +
-  theme(plot.tag = element_text(face = "bold"))+
-  geom_vline(xintercept = c(5.5,6.5), linetype = "dashed", color = "gray")
-
-caribe <- readRDS("figures jpg/Caribe_PC1PC3.RDS")
-indop <- readRDS("figures jpg/IndoP_PC1PC3.RDS")
-
-Figure.H3 <- (
-    (caribe + indop) / 
-    (Dispersion_Sm_Carib + Dispersion_Region_IndoP) / 
-    (Shift_Region_Carib + Shift_Region_IndoP)
-) +
-  plot_layout(heights = c(2,1,2)) +
-  plot_annotation(tag_levels = 'A')
-
-ggsave(filename = "figures jpg/Expansion_Shift.jpg", plot = Figure.H3,
-       dpi = 300, 
-       width = 8, height = 10, units = "in")

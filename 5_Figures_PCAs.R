@@ -72,6 +72,21 @@ islands_cwm_mu_sem <- islands_cwm_mu |>
   left_join(islands_SppR_Pred_SppR)
 
 spp_cell_df <- readRDS("Completeness_data_Islands/Species_in_cells_MetaArchipelagos.rds")
+spp_cell_df_func <- readRDS("Completeness_data_Islands/Records_eBird_func_traits.rds")
+# Examples from MacArthur et al 
+
+spp_cell_df_func |>
+  as.data.frame() |>
+  filter(scientific_name %in% c("Troglodytes musculus",
+                                "Troglodytes beani", 
+                                "Troglodytes martinicensis",
+                                "Troglodytes mesoleucus",
+                                "Troglodytes musicus",
+                                "Troglodytes grenadensis")) |>
+  ggplot(aes(x = longitude, y = latitude, fill = subregion))+
+  facet_wrap(~scientific_name, ncol = 1) +
+  geom_point(aes(size = mu_hat), alpha = 0.4, shape = 21)+
+  theme_classic()
 
 # PCA Caribbean CWM ####
 
@@ -90,7 +105,6 @@ names(caribbean_cwm)
 caribbean_cwm[,c(3,5:14,17:20)] |>
   pivot_longer(cols = !c(subregion), names_to = "Trait",values_to = "CWM") |>
   ggplot(aes(x = scale(log10(CWM)))) + geom_histogram() +facet_wrap(~Trait, scales = "free")+theme_classic()
-
 
 funspaceDim(scale(log10(caribbean_cwm[,c(5:14,17:20)]))) # 3 dimensions
 
@@ -119,13 +133,18 @@ carib.pca.cwm.values$subregion <- factor(carib.pca.cwm.values$subregion,
                                                      "Lesser Antilles (Kalinago)",
                                                      "Greater Antilles",
                                                      "Bahamas (Lucayan)"))
-
+summary(carib.pca.cwm)
 caribe <- ggpairs(carib.pca.cwm.values,
-        columns = 8:10,
+        columns = c(8:10),
+        columnLabels = c("PC1\n(55.63%)",
+                         "PC2\n(14.42%)",
+                         "PC3\n(12.92%)"),
+        showStrips = TRUE,
         aes(color = subregion,
             fill = subregion,
             alpha = 0.001),
-        upper = list(continuous = wrap("density", alpha = 0.1, bins = 8)))+
+        lower = list(continuous = wrap("density", alpha = 0.1, bins = 8)),
+        upper = list(continuous = "points"))+
   scale_fill_manual(values = c("#A1A1A1",
                                "#663171",
                                
@@ -141,10 +160,13 @@ caribe <- ggpairs(carib.pca.cwm.values,
   theme(legend.position = "bottom",
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
-        panel.border=element_rect(fill=NA,colour="grey50"), 
+        panel.border=element_rect(fill=NA,colour="grey50"),
         strip.background = element_blank())
 
 saveRDS(caribe, "figures jpg/Caribe_PC1PC3.RDS")
+ggsave("figures jpg/Caribe_PC1PC3.jpg", caribe, 
+       width = 9, height = 7, dpi = 300)
+
 
 ## Figure CWM-a - PC1-PC2 Caribbean ####
 summary(carib.pca.cwm.values[,8:10])
@@ -342,12 +364,18 @@ orinma.pca.cwm.values$subregion <- factor(orinma.pca.cwm.values$subregion,
                                                      "Wallacea",
                                                      "New Guinea"))
 
+summary(orinma.pca.cwm)
 indop <- ggpairs(orinma.pca.cwm.values,
-                  columns = 8:10,
-                  aes(color = subregion,
-                      fill = subregion,
-                      alpha = 0.001),
-                  upper = list(continuous = wrap("density", alpha = 0.1, bins = 8)))+
+                 columns = c(8:10),
+                 columnLabels = c("PC1 \n (59.37%)",
+                                  "PC2 \n (16.66%)",
+                                  "PC3 \n (8.48%)"),
+                 showStrips = TRUE,
+                 aes(color = subregion,
+                     fill = subregion,
+                     alpha = 0.001),
+                 lower = list(continuous = wrap("density", alpha = 0.1, bins = 10)),
+                 upper = list(continuous = "points"))+
   scale_fill_manual(values = c("#A1A1A1",
                                "#663171",
                                
@@ -367,10 +395,12 @@ indop <- ggpairs(orinma.pca.cwm.values,
   theme(legend.position = "bottom",
         panel.background =element_rect(fill="transparent",colour="black"),
         panel.grid.minor=element_blank(),
-        panel.border=element_rect(fill=NA,colour="grey50"), 
+        panel.border=element_rect(fill=NA,colour="grey50"),
         strip.background = element_blank())
 
 saveRDS(indop, "figures jpg/IndoP_PC1PC3.RDS")
+ggsave("figures jpg/IndoP_PC1PC3.jpg", indop, 
+       width = 9, height = 7, dpi = 300)
 
 ## Figure CWM-b - PC1-PC2 OrInMa ####
 summary(orinma.pca.cwm.values[,8:10])
@@ -917,6 +947,8 @@ ggsave(filename = "PCAs_CWV.pdf", plot = Figure.CWV,
 
 # Richness and Predator richness
 islands_cwm_mu_sem |> 
+  filter(subregion != "Vanuatu",
+         subregion != "Solomons") |>
   ggplot(aes(x = SppRichnessCell, 
              y = PredSppRichnessCell,
              color = factor(subregion,
@@ -927,8 +959,16 @@ islands_cwm_mu_sem |>
                                        "Philippines",
                                        "Wallacea",
                                        "Papua",
-                                       "Solomons",
-                                       "Vanuatu", 
+                                       "Bahamas (Lucayan)",
+                                       "Greater Antilles",
+                                       "Lesser Antilles (Kalinago)"),
+                            labels = c("Mainland",
+                                       "Continental islands",
+                                       "Andaman & Nicobar",
+                                       "Sunda islands",
+                                       "Philippines",
+                                       "Wallacea",
+                                       "New Guinea",
                                        "Bahamas (Lucayan)",
                                        "Greater Antilles",
                                        "Lesser Antilles (Kalinago)")),
@@ -940,51 +980,53 @@ islands_cwm_mu_sem |>
                                        "Philippines",
                                        "Wallacea",
                                        "Papua",
-                                       "Solomons",
-                                       "Vanuatu", 
                                        "Bahamas (Lucayan)",
                                        "Greater Antilles",
-                                       "Lesser Antilles (Kalinago)"))))+
+                                       "Lesser Antilles (Kalinago)"),
+                           labels = c("Mainland",
+                                      "Continental islands",
+                                      "Andaman & Nicobar",
+                                      "Sunda islands",
+                                      "Philippines",
+                                      "Wallacea",
+                                      "New Guinea",
+                                      "Bahamas (Lucayan)",
+                                      "Greater Antilles",
+                                      "Lesser Antilles (Kalinago)"))))+
   facet_grid(Meta_Archipelago~fig_group) +
   geom_point(aes(y = 0), shape = "|")+
-  geom_point(aes(x = 0), shape = "_")+
+  geom_point(aes(x = 0), shape = "_", alpha = 0.1)+
   geom_point(alpha = 0.25, shap = 21) +
   labs(x = "Bird species richness",
        y = "Bird predator species richness",
-       color = "Subregion \n (Archipelago)",
-       fill = "Subregion \n (Archipelago)") +
+       color = "Subregion",
+       fill = "Subregion") +
   scale_x_continuous(limits = c(0,550))+
   scale_y_continuous(limits = c(0,35))+
   scale_color_manual(values = c("#A1A1A1",
-                                "#481F70",
+                                "#663171",
                                 
-                                "#fc8d62",
-                                "#8da0cb",
-                                "#66c2a5",
+                                "#BA3841",
+                                "#DF5C2D",
+                                "#E6824F",
+                                "#B7917F",
+                                "#0C7156",
                                 
-                                "#0868ac",
-                                "#43a2ca",
-                                "#7bccc4",
-                                "#a8ddb5", 
-                                
-                                "#E3E418",
-                                "#35B779",
-                                "#21908C"))+
+                                "#ef8a47",
+                                "#376795",
+                                "#aadce0"))+
   scale_fill_manual(values = c("#A1A1A1",
-                                "#481F70",
-                                
-                                "#fc8d62",
-                                "#8da0cb",
-                                "#66c2a5",
-                                
-                                "#0868ac",
-                                "#43a2ca",
-                                "#7bccc4",
-                                "#a8ddb5", 
-                                
-                                "#E3E418",
-                                "#35B779",
-                                "#21908C"))+
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156",
+                               
+                               "#ef8a47",
+                               "#376795",
+                               "#aadce0"))+
   geom_smooth(method = "lm", se = TRUE) +
   theme(legend.position = "bottom",
         strip.background = element_blank(),
@@ -1011,6 +1053,20 @@ wrapped_gridCaribbean <- wrapped_gridCaribbean |>
   mutate(cell = as.character(seqnum)) |>
   left_join(caribbean_cwm) 
 
+#Save the cells to a geopackage file for use in other software
+sf::st_write(wrapped_gridCaribbean,
+         "Completeness_data_Islands/wrapped_gridCaribbean.gpkg",
+         layer = "grid_caribbean",
+         driver = "GPKG",
+         delete_layer = TRUE)
+
+sf::st_write(wrapped_gridIndoPacific,
+             "Completeness_data_Islands/wrapped_gridIndoPacific.gpkg",
+             layer = "grid_caribbean",
+             driver = "GPKG",
+             delete_layer = TRUE)
+
+
 world1 <- sf::st_as_sf(maps::map(database = 'world', plot = FALSE, fill = TRUE))
 world1
 
@@ -1036,16 +1092,14 @@ mapOrInMa <- ggplot()+
                                         "Papua"))))+
   coord_sf(ylim=c(-11,19),xlim=c(94,150.5))+
   #coord_sf(ylim=c(-20,20),xlim=c(92,170))+
-  scale_fill_manual(values = c("#A1A1A190",
-                               "#481F7070",
+  scale_fill_manual(values = c("#A1A1A170",
+                               "#66317170",
                                
-                               "#fc8d6270",
-                               "#8da0cb70",
-                               "#66c2a570",
-                               
-                               "#0868ac70",
-                               
-                               "#a8ddb570"),
+                               "#BA384170",
+                               "#DF5C2D70",
+                               "#E6824F70",
+                               "#B7917F70",
+                               "#0C715670"),
                     labels = c("Mainland",
                                "Continental islands",
                                "Andaman & Nicobar",
@@ -1054,15 +1108,13 @@ mapOrInMa <- ggplot()+
                                "Wallacea",
                                "New Guinea"))+
   scale_color_manual(values = c("#A1A1A1",
-                                "#481F70",
+                                "#663171",
                                 
-                                "#fc8d62",
-                                "#8da0cb",
-                                "#66c2a5",
-                                
-                                "#0868ac",
-                                
-                                "#a8ddb5"),
+                                "#BA3841",
+                                "#DF5C2D",
+                                "#E6824F",
+                                "#B7917F",
+                                "#0C7156"),
                      labels = c("Mainland",
                                 "Continental islands",
                                 "Andaman & Nicobar",
@@ -1093,38 +1145,40 @@ mapCarib <- ggplot()+
           aes(fill = factor(subregion,
                             levels = c("Mainland",
                                        "Continental islands",
-                                       "Bahamas (Lucayan)",
+                                       "Lesser Antilles (Kalinago)",
                                        "Greater Antilles",
-                                       "Lesser Antilles (Kalinago)")), 
+                                       "Bahamas (Lucayan)")), 
               color = factor(subregion,
                              levels = c("Mainland",
                                         "Continental islands",
-                                        "Bahamas (Lucayan)",
+                                        "Lesser Antilles (Kalinago)",
                                         "Greater Antilles",
-                                        "Lesser Antilles (Kalinago)"))))+
+                                        "Bahamas (Lucayan)"))))+
   coord_sf(ylim=c(8,26.5),
            xlim=c(-92,-59))+
 #  geom_hline(yintercept = 24)+geom_vline(xintercept = -79.5)+
-  scale_fill_manual(values = c("#A1A1A190",
-                               "#481F7070",
-                               "#E3E41870",
-                               "#35B77970",
-                               "#21908C70"),
+  scale_fill_manual(values = c("#A1A1A170",
+                               "#66317170",
+                               
+                               "#aadce070",
+                               "#37679570",
+                               "#ef8a4770"),
                     labels = c("Mainland",
                                "Continental islands",
-                               "Bahamas \n(Lucayan)",
+                               "Lesser Antilles \n(Kalinago)",
                                "Greater Antilles",
-                               "Lesser Antilles \n(Kalinago)"))+
+                               "Bahamas \n(Lucayan)"))+
   scale_color_manual(values = c("#A1A1A1",
-                                "#481F70",
-                                "#E3E418",
-                                "#35B779",
-                                "#21908C"),
+                                "#663171",
+                                
+                                "#aadce0",
+                                "#376795",
+                                "#ef8a47"),
                      labels = c("Mainland",
                                 "Continental islands",
-                                "Bahamas \n(Lucayan)",
+                                "Lesser Antilles \n(Kalinago)",
                                 "Greater Antilles",
-                                "Lesser Antilles \n(Kalinago)"))+
+                                "Bahamas \n(Lucayan)"))+
   labs(x = "Longitude",
        y = "Latitude",
        title = "Caribbean",
@@ -1138,7 +1192,10 @@ mapCarib <- ggplot()+
          fill = guide_legend(ncol = 2))
 
 
-ggsave(filename = "Carib_Map_Hexagons.jpg", plot = mapCarib,
+ggsave(filename = "figures jpg/Carib_Map_Hexagons.jpg", plot = mapCarib,
        dpi = 300, 
        width = 7, height = 5, units = "in")
 
+### Composition - just checking.... ####
+
+Caribbean_Cell_list |> View()
