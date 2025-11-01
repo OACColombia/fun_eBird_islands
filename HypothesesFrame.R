@@ -100,6 +100,77 @@ Fig_B <- ggMarginal(Fig2, type = "density",
                     groupColour = TRUE, 
                     groupFill = TRUE)
 
+# Expansion with betadisper
+H1.dispers <- vegan::betadisper(dist(cbind(H1[,3:4])), 
+                        H1$Group, type = "centroid")
+TukeyHSD(H1.dispers)
+
+H1.disp_df <- data.frame(distances = H1.dispers$distances,
+                         richness = H1$id,
+                             subregion = H1$Group)
+
+H1.disp_df |>
+  filter(richness < 200) |>
+  ggplot(aes(x = subregion, y = distances, fill = subregion))+
+  geom_boxplot(color = "black", alpha = 0.6, outliers = FALSE)+
+  geom_jitter(alpha = 0.2, shape = 21, width = 0.2, aes(size = richness))+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Subregion", y = "Euclidean distance from centroid",
+       fill = "",
+       title = "Expansion")+
+  theme(legend.position = "none",
+        legend.position.inside = c(0.75, 0.75), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
+
+H1.disp_df |>
+  filter(richness < 200) |>
+  ggplot(aes(x = richness, y = distances, color = subregion, fill = subregion))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  scale_color_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Richness", y = "Euclidean distance from centroid",
+       fill = "", color = "",
+       title = "Expansion by richness")+
+  theme(legend.position = "inside",
+        legend.position.inside = c(0.75, 0.75), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
+
+
+# Shift with GLM
+H1 |>
+  filter(id < 200) |>
+  pivot_longer(cols = c(Trait1, Trait2),
+               names_to = "Dimension",
+               values_to = "Score") |>
+  ggplot(aes(x = id, y = Score, color = Group, fill = Group))+
+  facet_wrap(~factor(Dimension, 
+                     levels = c("Trait1",
+                                "Trait2"),
+                     labels = c("Dimension 1",
+                                "Dimension 2")),
+             ncol = 1) +
+  geom_point() +
+  geom_smooth(method = "lm")+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  scale_color_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Richness", 
+       title = "No shift")+
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
 
 #Hypothesis 2 ####
 I_T2 <- data.Trait %>%
@@ -147,6 +218,61 @@ Fig_C <- ggMarginal(Fig3, type = "density",
                     groupColour = TRUE, 
                     groupFill = TRUE)
 
+# Expansion with betadisper
+H2.dispers <- vegan::betadisper(dist(cbind(H2[,3:4])), 
+                                H2$Group, type = "centroid")
+TukeyHSD(H2.dispers)
+
+H2.disp_df <- data.frame(distances = H2.dispers$distances,
+                         richness = H2$id,
+                         subregion = H2$Group)
+
+H2.disp_df |>
+  filter(richness < 200) |>
+  ggplot(aes(x = subregion, y = distances, fill = subregion))+
+  geom_boxplot(color = "black", alpha = 0.6, outliers = FALSE)+
+  geom_jitter(alpha = 0.2, shape = 21, width = 0.2, aes(size = richness))+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Subregion", y = "Euclidean distance from centroid",
+       fill = "",
+       title = "No expansion")+
+  theme(legend.position = "none",
+        legend.position.inside = c(0.75, 0.75), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
+
+# Shift with GLM
+H2 |>
+  filter(id < 200) |>
+  pivot_longer(cols = c(Trait1, Trait2),
+               names_to = "Dimension",
+               values_to = "Score") |>
+  ggplot(aes(x = id, y = Score, color = Group, fill = Group))+
+  facet_wrap(~factor(Dimension, 
+                     levels = c("Trait1",
+                                "Trait2"),
+                     labels = c("Dimension 1",
+                                "Dimension 2")),
+             ncol = 1) +
+  geom_point() +
+  geom_smooth(method = "lm")+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  scale_color_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Richness", 
+       title = "Shift")+
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
+
+
+
 #Hypothesis 3 ####
 I_T3 <- data.Trait %>%
   filter(Group == "Island") %>% 
@@ -191,6 +317,66 @@ Fig4 <- ggplot(H3, aes(x = Trait1, y = Trait2, color = Group))+
 Fig_D <- ggMarginal(Fig4, type = "density",
                     groupColour = TRUE, 
                     groupFill = TRUE)
+
+
+# Expansion with betadisper
+H3.dispers <- vegan::betadisper(dist(cbind(H3[,3:4])), 
+                                H3$Group, type = "centroid")
+TukeyHSD(H3.dispers)
+
+H3.disp_df <- data.frame(distances = H3.dispers$distances,
+                         richness = H3$id,
+                         subregion = H3$Group)
+
+H3.disp_df |>
+  filter(richness < 200) |>
+  ggplot(aes(x = subregion, y = distances, fill = subregion))+
+  geom_boxplot(color = "black", alpha = 0.6, outliers = FALSE)+
+  geom_jitter(alpha = 0.2, shape = 21, width = 0.2, aes(size = richness))+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Subregion", y = "Euclidean distance from centroid",
+       fill = "",
+       title = "Expansion")+
+  theme(legend.position = "none",
+        legend.position.inside = c(0.75, 0.75), 
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
+
+# Shift with GLM
+H3 |>
+  filter(id < 200) |>
+  pivot_longer(cols = c(Trait1, Trait2),
+               names_to = "Dimension",
+               values_to = "Score") |>
+  ggplot(aes(x = id, y = Score, color = Group, fill = Group))+
+  facet_wrap(~factor(Dimension, 
+                     levels = c("Trait1",
+                                "Trait2"),
+                     labels = c("Dimension 1",
+                                "Dimension 2")),
+             ncol = 1) +
+  geom_point() +
+  geom_abline(intercept = -2, slope = 0.025, color = "gray")+
+  geom_abline(intercept = 8, slope = -0.05, color = "#2980B9")+
+  scale_fill_manual(values = c("#2980B9", "gray"))+
+  scale_color_manual(values = c("#2980B9", "gray"))+
+  labs(x = "Richness", 
+       title = "Shift")+
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text = element_blank(), 
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"))
+
+
+
+
+
 
 #Combine figure ####
 
