@@ -1,0 +1,290 @@
+---
+title: "Functional biogeography"
+author: "Orlando Acevedo-Charry"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+
+How population-level ecological release scales to community-level trait assembly across a gradient of ecologically similar sites with declining species richness? 
+
+![Conceptual framework illustrating three hypotheses for how ecological release at the population-level may scale to community-level patterns in functional trait space.](figures jpg/Figure 1 - Conceptual_arrows.jpg)
+
+Species-poor communities may show expansion in functional space (\textbf{Hypothesis 1: Expansion}). Reduced interspecific competition on islands allows species to exploit peripheral regions of the functional space. Functionally distinctive species may increase in abundance or expand their niche, leading to higher trait variability. We expect increases in the ranges of trait dimensions and extreme trait values, particularly in traits contributing to individual survival and fitness. Some of these traits may include dispersal morphology (e.g., wing shape), foraging morphology (e.g., tarsus length), and dietary morphology (e.g., beak shape). 
+
+Communities may show a shift in functional space rather than expansion (\textbf{Hypothesis 2: Shift}). Reduced predation on islands may drive species to modify behavioral and ecological strategies without necessarily expanding functional trait spaces, which can remain constrained by higher intraspecific competition ([MacArthur 1972](https://esajournals.onlinelibrary.wiley.com/doi/10.2307/1934090), [Terborgh 2023](https://onlinelibrary.wiley.com/doi/abs/10.1111/jbi.14530)). This shift may manifest as changes in the dominant trait dimensions, such as an increased use of lower vertical strata ([MacArthur 1972](https://esajournals.onlinelibrary.wiley.com/doi/10.2307/1934090)), or an increased reproductive niche breadth, resulting in a higher number of nest structures and nest locations in species-poor communities. Still, in this scenario, variance among trait values remains similar. 
+
+Ultimately, these two hypotheses may be applied simultaneously. Communities may show functional space expansion and shift of combined functional traits through joint release (\textbf{Hypothesis 3: Expansion + Shift}). When competition and predation pressures are relaxed, we may expect a synergistic effect of functional trait space, resulting in combined expansion and shift. This could result in increased trait diversity (higher variance), different trait dominance (mean), and reorganization of community-level trait distributions. Mechanistically, this reflects niche expansion and niche shift, driven by changes in abundance, behavior, and ecological strategies, accompanied by reduced competition and predation ([MacArthur 1972](https://esajournals.onlinelibrary.wiley.com/doi/10.2307/1934090), [Herrmann et al. 2021](https://www.sciencedirect.com/science/article/pii/S0169534720303116)). 
+
+To compare these hypotheses, we analyzed data on birds--a diverse taxonomic group for which functional traits are well described at the species level ([Tobias et al. 2022](https://doi.org/10.1111/ele.13898), [Sheard et al. 2023](https://onlinelibrary.wiley.com/doi/full/10.1111/geb.13783), [Moura et al. 2024](https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.3002658), [Şekercioğlu et al. 2025](https://www.nature.com/articles/s41597-025-05615-3)) . Bird communities have also been a classic case study in ecological release and density compensation in mainland-island gradients ([Lack 1944](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1474-919X.1944.tb04092.x), [MacArthur 1972](https://esajournals.onlinelibrary.wiley.com/doi/10.2307/1934090), [Lack 1976 - see Orians 1976](https://www.science.org/doi/10.1126/science.194.4270.1153), [Cox & Ricklefs 1977](https://www.jstor.org/stable/3543330?seq=1), [Wright & Steadman 2012](https://doi.org/10.1111/j.1365-2699.2012.02754.x), [Sherry et al. 2020](https://doi.org/10.1093/auk/ukaa049)). Specifically, we compared two regions with known gradients of species richness and high levels of bird endemism that have been foundational to island biogeography: the Caribbean and Eastern Indo-Pacific meta-archipelagos.
+
+## Packages
+
+The packages used are
+
+```{r packages, echo=TRUE}
+# For code 1 - Islands eBird filtering
+library(tidyverse); #manipulate data
+library(auk); #eBird data filters
+library(dggridR) #Spatiotemporal Subsampling
+library(sf) # Simple Features, to encode spatial vector data
+```
+
+## Islands eBird filtering
+
+We downloaded all eBird data up to May 2024 (to be updated to December 2025). To reduce the size of this files and filter accordingly to our aim, we select species considered Sedentary or Resident that do NOT occupy specific primary habitats Sea, Wetland, Riparian, or Coastal (only "land birds"), using the Mobility and Habitat trait groups in [Şekercioğlu et al. (2025)](https://www.nature.com/articles/s41597-025-05615-3). We combine the eBird taxonomy with different bird trait databases to generate a list of taxa to filter in eBird.
+
+```{r eBird list matching taxonomy of functional traits, eval=FALSE}
+# eBird at 2025 will be my taxonomy (to filter in the ebd file)
+eBird_taxonomy <- read_csv("FunctionalTraits/eBird-Clements_v2025-integrated-checklist-October-2025.csv") |> 
+  select(scientific_name = `scientific name`, 
+         category)
+
+# BIRDBASE is more updated than AVONET, including Distribution, Body Mass, Elevation, Habitat, Diet, Reproductive Behavior, Demography, and Mobility
+birdbase <- read_csv("FunctionalTraits/BirdBase.csv") |> 
+  # only sedentary or resident species NOT from the Sea, Wetland, Riparian, or Coastal primary habitat
+  filter(`Mobility - Sedentary or Resident` == 1,
+         `Habitat - Primary Habitat` != "Sea", 
+         `Habitat - Primary Habitat` != "Wetland", 
+         `Habitat - Primary Habitat` != "Riparian",
+         `Habitat - Primary Habitat` != "Coastal") |>
+  # adjust traits for functional space estimation
+  mutate(ESI = log10(100 / (`Habitat - Habitat Breadth` * (`Diet - Diet Breadth` + 0.1))), 
+         `Body mass` = log(`Body Mass - Average`), 
+         `Clutch size` = ((`Reproductive Behavior - Max Clutch Size` + `Reproductive Behavior - Min Clutch Size`) / 2),
+         `Number of broods` = ((`Reproductive Behavior - Max Number of Broods` + `Reproductive Behavior - Min Number of Broods`) / 2),
+         `Nest location breadth` = str_count(`Reproductive Behavior - Nest Substrate`, "[A-Za-z]"), 
+         `Nest type breadth` = ifelse(`Reproductive Behavior - Nest Type` == "", 0, str_count(`Reproductive Behavior - Nest Type`, ",") + 1))
+
+# long format of birdbase to try and harmonize taxonomies
+birdbase_long <- birdbase |>
+  pivot_longer(    
+    cols = c(`Latin (BirdLife_IOC_Clements_AviList)`,
+             `HBW/BirdLife International (v9.1)`,
+             `IOC World Bird List (v15.1)`,
+             `eBird/Clements (V2024b)`,
+             `AviList v1 2025`),    
+    names_to = "taxonomy_source_birdbase",    
+    values_to = "species_name"  
+    ) |>
+  filter(!is.na(species_name))
+
+# AVONET
+
+# the raw data from Tobias et al.
+avonet <- read_csv("ELEData/TraitData/AVONET_Raw_Data.csv")
+
+# long format of avonet to try and harmonize taxonomies
+avonet_long <- avonet |>
+  pivot_longer(
+    cols = c(Species1_BirdLife, 
+             Species2_eBird, 
+             Species3_BirdTree, 
+             eBird.species.group),
+    names_to = "taxonomy_source_avonet",
+    values_to = "species_name"  
+    ) |>
+  group_by(taxonomy_source_avonet, species_name) |>
+  summarise(
+    `Hand Wing Index` = mean(`Hand-wing.Index`, na.rm = TRUE),
+    `Tarsus length` = mean(`Tarsus.Length`, na.rm = TRUE),
+    `Wing length` = mean(`Wing.Length`, na.rm = TRUE), 
+    `Beak length (nares)` = mean(`Beak.Length_Nares`, na.rm = TRUE), 
+    `Beak length (culmen)` = mean(`Beak.Length_Culmen`, na.rm = TRUE),
+    `Beak width` = mean(`Beak.Width`, na.rm = TRUE),
+    `Beak depth` = mean(`Beak.Depth`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# TetrapodsTraits
+tetrapods <- read_csv("FunctionalTraits/TetrapodTraits_1.0.0.csv") |>
+  filter(Class %in% "Aves")
+
+# long format of tetrapods to try and harmonize taxonomies
+tetra_long <- tetrapods |>
+  pivot_longer(    
+    cols = c(Scientific.Name, 
+             IUCN_Binomial),    
+    names_to = "taxonomy_source_tetrapods",    
+    values_to = "species_name"  
+    )
+
+# Join and summarize per "taxa" (it will include subspecies and groups in eBird)
+
+ebird_functional_taxa <- eBird_taxonomy |>
+  left_join(birdbase_long, by = c("scientific_name" = "species_name")) |>
+  left_join(avonet_long, by = c("scientific_name" = "species_name")) |> 
+  left_join(tetra_long, by = c("scientific_name" = "species_name")) |>
+  filter(!is.na(scientific_name)) |>
+  group_by(scientific_name) |>
+  summarise(`log (Body mass)` = mean(`Body mass`, na.rm = TRUE), # this already have the log transformation from birdbase
+            `Hand Wing Index` = mean(`Hand Wing Index`, na.rm = TRUE), 
+            `Tarsus length` = mean(`Tarsus length`, na.rm = TRUE), 
+            `Wing length` = mean(`Wing length`, na.rm = TRUE), 
+            `Beak length (nares)` = mean(`Beak length (nares)`, na.rm = TRUE), 
+            `Beak length (culmen)` = mean(`Beak length (culmen)`, na.rm = TRUE),
+            `Beak width` = mean(`Beak width`, na.rm = TRUE),
+            `Beak depth` = mean(`Beak depth`, na.rm = TRUE),
+            `Diet breadth` = mean(`Diet - Diet Breadth`, na.rm = TRUE),
+            `Habitat breadth` = mean(`Habitat - Habitat Breadth`, na.rm = TRUE),
+            `EcoloSpeciIndex` = mean(ESI, na.rm = TRUE),
+            `Verticality index` = mean(`Verticality`, na.rm = TRUE),
+            `Elevational range` = mean(`Elevation - Elevational Range`, na.rm = TRUE),
+            `Clutch size` = mean(`Clutch size`, na.rm = TRUE),
+            `Number of broods` = mean(`Number of broods`, na.rm = TRUE),
+            `Nest location breadth` = mean(`Nest location breadth`, na.rm = TRUE),
+            `Nest type breadth` = mean(`Nest type breadth`, na.rm = TRUE),
+            .groups = "drop") |>
+  unique()
+saveRDS(ebird_functional_taxa, "FunctionalTraits/eBird_func_taxa.RDS")
+```
+
+And now filter the list of species in the two meta archipelagos (this is easier in a Terminal). To use the ebd files (big files), we should decompress them from a `.tar` archive and a `.txt.gz` compressed file. I use the Terminal for this, whit the command `tar -0xf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_txt_files/ebd_relJan-2026.txt`, which use a pipe (`|`) and a redirection (`>`) to the folder that will containt the `.txt` file. With that file extracted, we can run the next code in the Terminal.
+
+```{r filterin eBird, eval=FALSE}
+taxa_etal <- readRDS("FunctionalTraits/eBird_func_taxa.RDS") |>
+  dplyr::select(scientific_name) |> 
+  as.vector()
+
+#Define the geographic range
+CaribbeanRange <- c(-91,8,-59,27)
+IndoMalayRange <- c(90,-20,180,20)
+
+#select the columns to extract (based on x$col_idx$name)
+colsE <- c("observer_id", "sampling_event_identifier",
+           "group identifier",
+           "common_name", "scientific_name",
+           "observation_count",
+           "country", "state_code", "locality_id", "latitude", "longitude",
+           "protocol_type", "all_species_reported",
+           "observation_date",
+           "time_observations_started",
+           "duration_minutes", "effort_distance_km",
+           "number_observers")
+
+#all
+f_ebd <- "ebd_txt_files/ebd_Islands.txt" #Temporal file to save the filtering eBird data (records)
+
+ebd_filt<-auk_ebd("ebd_txt_files/ebd_relJan-2026.txt") %>%
+  auk_bbox(list(CaribbeanRange,
+                IndoMalayRange)) %>% #W, S, E, N
+  auk_year(c(2015:2025)) %>%
+  auk_protocol(c("Traveling", "Stationary")) %>%
+  auk_distance(distance = c(0,5)) %>%
+  auk_duration(duration = c(0,300))%>%
+  auk_complete() %>%
+  auk_filter(f_ebd, overwrite=T, keep = colsE)
+
+# and with read_ebd I apply another filter to do not repeat records from groups
+ebd_Islands <- read_ebd(f_ebd)
+
+# Function to convert time observation to hours since midnight
+time_to_decimal <- function(x) {
+  x <- hms(x, quiet = TRUE)
+  hour(x) + minute(x) / 60 + second(x) / 3600
+}
+
+#Effort data
+Islands_eff <- ebd_Islands |>
+  mutate(
+    # I don't want count in X, to convert to NA
+    observation_count = as.integer(observation_count),
+    # effort_distance_km to 0 for non-travelling counts
+    effort_distance_km = if_else(protocol_type == "Stationary",
+                                 0, effort_distance_km),
+    # convert time to decimal hours since midnight
+    time_observations_started = time_to_decimal(time_observations_started),
+    hour_sampling = round(time_observations_started, 0),
+    # split date into year, month, week, and day of year
+    year = year(observation_date),
+    month = month(observation_date),
+    week = week(observation_date),
+    day_of_year = yday(observation_date),
+    # temporal aggregation - month
+    Time.t = case_when(year == 2015 ~ month,
+                       year > 2015 ~ month+(12*(year-2015)))) |>
+  filter(number_observers <= 10,         #Only list with less than 10 observers
+         effort_distance_km <= 5,        #be sure of distance effort
+         duration_minutes %in% (0:300), #be sure of duration effort
+         !is.na(observation_count))      #only records with abundance estimation
+
+Checklists_with_more_Spp <- Islands_eff %>%
+  dplyr::select(checklist_id, scientific_name) %>%
+  group_by(checklist_id) %>%
+  summarise(N_species = n()) %>%
+  ungroup() %>%
+  filter(N_species >= quantile(N_species, 0.25)) # minimum number of species per sampling - 1st Quartile
+
+Islands_cooc <- Islands_eff[Islands_eff$checklist_id %in% Checklists_with_more_Spp$checklist_id, ]
+
+saveRDS(Islands_cooc, "results_funbiog/Islands_cooc.RDS")
+
+##Spatial Grids ####
+
+# Spatiotemporal Subsampling in diameters of ~11 km (area of ~100 km^2)
+# spacing 1 correspond to Characteristic Length Scale, or diameter of spherical cell
+dggs_island <- dgconstruct(spacing = 11) 
+
+#add a new variable that identify cell
+Islands_cooc_cells <- Islands_cooc |>
+    filter(observation_count < 7000) %>% #there is an outlying count for _Eurylaimus ochromalus_ https://ebird.org/checklist/S112199250
+  mutate(cell = dgGEO_to_SEQNUM(dggs_island, #id for cells
+                                longitude, latitude)$seqnum) |>
+  group_by(cell, scientific_name, Time.t) |>
+  # extract the minimum number of individual detected per month per cell of each species
+  mutate(Observed.y = round(max(observation_count))) |> 
+  ungroup()
+
+# filter cells with more than 10 localities within
+cells_1stQ <- Islands_cooc_cells |>
+  group_by(cell, locality_id) |>
+  count() |>
+  group_by(cell) |>
+  count() |>
+  ungroup() |>
+  filter(n >= 10)
+
+Islands_SS = Islands_cooc_cells[Islands_cooc_cells$cell %in% cells_1stQ$cell, ]
+
+saveRDS(Islands_SS, "results_funbiog/Islands_SS.RDS")
+
+# Get the number of records in each cell
+RichnessCell   <- Islands_SS %>%
+  group_by(cell, scientific_name) %>%
+  summarise(count=n()) %>%
+  group_by(cell) %>%
+  summarise(SpRichness=n())
+
+# Get the grid cell boundaries for cells which had quakes
+gridIslands <- dgcellstogrid(dggs_island,RichnessCell$cell)
+
+# Update the grid cells' properties to include the number of lists in each cell
+gridIslands <- merge(gridIslands, RichnessCell, by.x = "seqnum", by.y = "cell")
+
+# Handle cells that cross 180 degrees
+wrapped_grid_Islands = st_wrap_dateline(gridIslands,
+                                         options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
+
+saveRDS(wrapped_grid_Islands, "results_funbiog/wrapped_grid_Islands.rds")
+
+#End of this code
+```
+
+## Organizing eBird data for stationary distribution population models
+
+At the core of our question is the estimation of a expected log-abundance at stationary distribution to weight the functional traits. We used the Stochastic Gompertz State-Space model (see [Dennis & Ponciano](https://doi.org/10.1890/13-1486.1)). 
+
+The stochastic differential equation describing the dynamic is:
+$$
+dN(t) = \theta N(t)[\log \kappa - \log N(t)] dt + \beta N(t) dW(t)
+$$
+\noindent in which over a tiny time interval, $dt$, an increment of abundance $dN(t)$ is drawn from a normal distribution with a mean $\theta N(t)[\log \kappa - \log N(t)] dt$ and variance $[\beta N(t)]^2 dt$, where $N(t)$ denotes the current abundance, $t$ the current time of population trajectory, $\theta$ and $\kappa$ are constants of equilibrium abundance and speed of equilibrium, respectively. This dynamic is updated as $N(t) + dN(t)$ and $t + dt$. An infinitesimal increment of the Gompertz growth deterministic skeleton (in ordinary differential form $\frac{dn(t)}{dt} = \theta n(t)[\log \kappa - \log n(t)]$) is perturbed by a random noise $dW(t) \sim \text{Normal}(0, dt)$, in which intensity of the noise is scaled by $\beta N(t)$ with $\beta > 0$, denoting the environmental stochasticity. This is a diffusion process with infinitesimal mean $m(n) = \theta n(\log \kappa - \log n)$ and infinitesimal variance $v(n) = \beta^2n^2$. Let $X(t) = g(N(t))$ be a smooth invertible transformation (e.g., $\log N(t)$), the infinitesimal mean $m_{X}$ and variance $v_X$ of $X(t)$ are given by the Itô transformation formulas: $m_X(x) = m(n)g'(n) + (1/2)v(n)g''(n)$, $v_X(x) = v(n)[g'(n)]^2$, with $n = g^{-1}(x)$ and $g'$ and $g''$ representing first and second derivatives. Thus, a given diffusion process might be transformed to a scale, which exist for the stochastic Gompertz model.
+
+The transformation of the stochastic Gompertz model ($X(t) = \log N(t)$) converts the population abundance into the Ornstein-Uhlenbeck diffusion process, with infinitesimal mean $$

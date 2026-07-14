@@ -136,8 +136,8 @@ carib.pca.cwm.values$subregion <- factor(carib.pca.cwm.values$subregion,
 summary(carib.pca.cwm)
 caribe <- ggpairs(carib.pca.cwm.values,
         columns = c(8:10),
-        columnLabels = c("PC1\n(55.63%)",
-                         "PC2\n(14.42%)",
+        columnLabels = c("PC1\n(55.69%)",
+                         "PC2\n(14.31%)",
                          "PC3\n(12.92%)"),
         showStrips = TRUE,
         aes(color = subregion,
@@ -167,6 +167,69 @@ saveRDS(caribe, "figures jpg/Caribe_PC1PC3.RDS")
 ggsave("figures jpg/Caribe_PC1PC3.jpg", caribe, 
        width = 9, height = 7, dpi = 300)
 
+## Interactive 3D pc ####
+library(plotly)
+
+# Define your palette
+subregion_colors <- c(
+  "Mainland"            = "#A1A1A1",
+  "Continental islands" = "#663171",
+  "Lesser Antilles (Kalinago)"     = "#aadce0",
+  "Greater Antilles"    = "#376795",
+  "Bahamas (Lucayan)"             = "#ef8a47"
+)
+
+# Scale richness to a reasonable marker size range
+size_scale <- scales::rescale(carib.pca.cwm.values$spp_richness, to = c(4, 18))
+
+# Base scatter plot with relative size
+p <- plot_ly(
+  data = carib.pca.cwm.values,
+  x = ~PC1, y = ~PC2, z = ~PC3,
+  type = "scatter3d", mode = "markers",
+  color = ~subregion,
+  colors = subregion_colors,
+  marker = list(
+    size = size_scale,   # relative size by richness
+    opacity = 0.45
+  ),
+  text = ~paste("Richness:", spp_richness) # hover info
+)
+
+# Add loading vectors for top contributors
+carib.pca.cwm.loadings$contrib <- rowSums(carib.pca.cwm.loadings[, c("PC1","PC2","PC3")]^2)
+top_vars <- carib.pca.cwm.loadings[order(-carib.pca.cwm.loadings$contrib), ][1:10, ]
+
+for (i in seq_len(nrow(top_vars))) {
+  v <- top_vars[i, ]
+  
+  # Arrow (line only)
+  p <- add_trace(
+    p,
+    x = c(0, v$PC1 * 3),
+    y = c(0, v$PC2 * 3),
+    z = c(0, v$PC3 * 3),
+    type = "scatter3d", mode = "lines",
+    line = list(color = "black", width = 4),
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+  
+  # Label (only at arrow tip)
+  p <- add_trace(
+    p,
+    x = v$PC1 * 3,
+    y = v$PC2 * 3,
+    z = v$PC3 * 3,
+    type = "scatter3d", mode = "text",
+    text = v$Variables,
+    textposition = "top middle",
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+}
+
+p
 
 ## Figure CWM-a - PC1-PC2 Caribbean ####
 summary(carib.pca.cwm.values[,8:10])
@@ -220,8 +283,8 @@ cwm.a <- ggplot(carib.pca.cwm.values) +
                   aes(x = PC1*20, y = PC2*12, 
                       label = Variables),
                   size = 3, color = "black") + 
-  labs(x = "PC1 (55.63%)",
-       y = "PC2 (14.42%)",
+  labs(x = "PC1 (55.69%)",
+       y = "PC2 (14.31%)",
 #       title = expression(bold("a")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
@@ -291,8 +354,8 @@ cwm.c <- ggplot(carib.pca.cwm.values) +
                   aes(x = PC2*6, y = PC3*6, 
                       label = Variables),
                   size = 3) + 
-  labs(x = "PC2 (14.42%)",
-       y = "PC3 (12.92%)",
+  labs(x = "PC2 (14.31%)",
+       y = "PC3 (12.82%)",
  #      title = expression(bold("c")),
        fill = "Archipelago \n(subregion)",
        color = "Archipelago \n(subregion)")+
@@ -367,9 +430,9 @@ orinma.pca.cwm.values$subregion <- factor(orinma.pca.cwm.values$subregion,
 summary(orinma.pca.cwm)
 indop <- ggpairs(orinma.pca.cwm.values,
                  columns = c(8:10),
-                 columnLabels = c("PC1 \n (59.37%)",
-                                  "PC2 \n (16.66%)",
-                                  "PC3 \n (8.48%)"),
+                 columnLabels = c("PC1 \n (59.26%)",
+                                  "PC2 \n (16.88%)",
+                                  "PC3 \n (8.37%)"),
                  showStrips = TRUE,
                  aes(color = subregion,
                      fill = subregion,
@@ -401,6 +464,73 @@ indop <- ggpairs(orinma.pca.cwm.values,
 saveRDS(indop, "figures jpg/IndoP_PC1PC3.RDS")
 ggsave("figures jpg/IndoP_PC1PC3.jpg", indop, 
        width = 9, height = 7, dpi = 300)
+
+## Interactive 3D pc ####
+library(plotly)
+
+# Define your palette
+subregion_colorsI <- c(
+  "Mainland"            = "#A1A1A1",
+  "Continental islands" = "#663171",
+  "Andaman & Nicobar" = "#BA3841",
+  "Sunda islands" = "#DF5C2D",
+  "Philippines" = "#E6824F",
+  "Wallacea" = "#B7917F",
+  "New Guinea" = "#0C7156"
+)
+
+# Scale richness to a reasonable marker size range
+size_scaleI <- scales::rescale(orinma.pca.cwm.values$spp_richness, to = c(4, 18))
+
+# Base scatter plot with relative size
+pI <- plot_ly(
+  data = orinma.pca.cwm.values,
+  x = ~PC1, y = ~PC2, z = ~PC3,
+  type = "scatter3d", mode = "markers",
+  color = ~subregion,
+  colors = subregion_colorsI,
+  marker = list(
+    size = size_scale,   # relative size by richness
+    opacity = 0.25
+  ),
+  text = ~paste("Richness:", spp_richness) # hover info
+)
+
+# Add loading vectors for top contributors
+orinma.pca.cwm.loadings$contrib <- rowSums(orinma.pca.cwm.loadings[, c("PC1","PC2","PC3")]^2)
+top_varsI <- orinma.pca.cwm.loadings[order(-orinma.pca.cwm.loadings$contrib), ][1:10, ]
+
+for (i in seq_len(nrow(top_varsI))) {
+  v <- top_varsI[i, ]
+  
+  # Arrow (line only)
+  pI <- add_trace(
+    pI,
+    x = c(0, v$PC1 * 3),
+    y = c(0, v$PC2 * 3),
+    z = c(0, v$PC3 * 3),
+    type = "scatter3d", mode = "lines",
+    line = list(color = "black", width = 4),
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+  
+  # Label (only at arrow tip)
+  pI <- add_trace(
+    pI,
+    x = v$PC1 * 3,
+    y = v$PC2 * 3,
+    z = v$PC3 * 3,
+    type = "scatter3d", mode = "text",
+    text = v$Variables,
+    textposition = "top middle",
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+}
+
+pI
+
 
 ## Figure CWM-b - PC1-PC2 OrInMa ####
 summary(orinma.pca.cwm.values[,8:10])

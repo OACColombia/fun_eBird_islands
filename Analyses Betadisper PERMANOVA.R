@@ -60,10 +60,21 @@ AICcmodavg::aictab(cand.set = list(orinma.mod.Null,
                                    orinma.mod.Pm.Subr),
                    modnames = c("Null", "Subregion","Sm","Pm","Sm_Subregion","Pm_Subregion"))
 
-summary(orinma.mod.Sm.Subr)#AICcWt 0.92!
+summary(orinma.mod.Sm.Subr)#AICcWt 0.96!
 
-#∆AIC = 5.09:
+#∆AIC = 6.55:
 summary(orinma.mod.Subr) 
+
+# Extract effects of each variable
+library(emmeans)
+orinma.mod.Sm.Subr.eff <- emtrends(orinma.mod.Sm.Subr, ~ subregion, var = "spp_richness") |>
+  as.data.frame()
+
+orinma.mod.Sm.Subr.eff |>
+  ggplot(aes(x = subregion)) +
+  geom_pointrange(aes(y = spp_richness.trend, ymin = lower.CL, ymax = upper.CL)) +
+  coord_flip()
+
 
 
 ## Figures Euclidean distance (Variance - dispersion) ####
@@ -298,9 +309,9 @@ carib.mod.Sm <- glm(distances ~ spp_richness,
                     data = carib.disp_df)
 carib.mod.Pm <- glm(distances ~ pred_richness, 
                     data = carib.disp_df)
-carib.mod.Sm.Subr <- glm(distances ~ spp_richness*subregion, 
+carib.mod.Sm.Subr <- glm(distances ~ spp_richness*subregion + pred_richness, 
                     data = carib.disp_df)
-carib.mod.Pm.Subr <- glm(distances ~ pred_richness*subregion, 
+carib.mod.Pm.Subr <- glm(distances ~ pred_richness*subregion + spp_richness, 
                     data = carib.disp_df)
 AICcmodavg::aictab(cand.set = list(carib.mod.Null, 
                                    carib.mod.Subr,
@@ -312,6 +323,25 @@ AICcmodavg::aictab(cand.set = list(carib.mod.Null,
 
 summary(carib.mod.Pm.Subr)
 summary(carib.mod.Sm.Subr)
+
+carib.mod.Pm.Subr.eff <- emtrends(carib.mod.Pm.Subr, ~ subregion, var = "pred_richness") |>
+  as.data.frame()
+
+carib.mod.Pm.Subr.eff |>
+  ggplot(aes(x = subregion)) +
+  geom_pointrange(aes(y = pred_richness.trend, ymin = lower.CL, ymax = upper.CL)) +
+  coord_flip()
+
+
+carib.mod.Sm.Subr.eff <- emtrends(carib.mod.Sm.Subr, ~ subregion, var = "spp_richness") |>
+  as.data.frame()
+
+carib.mod.Sm.Subr.eff |>
+  ggplot(aes(x = subregion)) +
+  geom_pointrange(aes(y = spp_richness.trend, ymin = lower.CL, ymax = upper.CL)) +
+  coord_flip()
+
+
 
 ## Figures Euclidean distance (Variance - Dispersion) ####
 ggplot(carib.disp_df, aes(x = subregion,
