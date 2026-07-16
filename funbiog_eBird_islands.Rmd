@@ -39,7 +39,7 @@ library(sf) # Simple Features, to encode spatial vector data
 
 ## Islands eBird filtering
 
-We downloaded all eBird data up to May 2024 (to be updated to December 2025). To reduce the size of this files and filter accordingly to our aim, we select species considered Sedentary or Resident that do NOT occupy specific primary habitats Sea, Wetland, Riparian, or Coastal (only "land birds"), using the Mobility and Habitat trait groups in [Şekercioğlu et al. (2025)](https://www.nature.com/articles/s41597-025-05615-3). We combine the eBird taxonomy with different bird trait databases to generate a list of taxa to filter in eBird.
+We downloaded all eBird data up to January 2026. To reduce the size of this files and filter accordingly to our aim, we select species considered Sedentary or Resident that do NOT occupy specific primary habitats Sea, Wetland, Riparian, or Coastal (only "land birds"), using the Mobility and Habitat trait groups in [Şekercioğlu et al. (2025)](https://www.nature.com/articles/s41597-025-05615-3). We combine the eBird taxonomy with different bird trait databases to generate a list of taxa to filter in eBird (the code could be names as `0_resident_landbirds_list.R`):
 
 ```{r eBird list matching taxonomy of functional traits, eval=FALSE}
 # eBird at 2025 will be my taxonomy (to filter in the ebd file)
@@ -146,9 +146,72 @@ ebird_functional_taxa <- eBird_taxonomy |>
 saveRDS(ebird_functional_taxa, "FunctionalTraits/eBird_func_taxa.RDS")
 ```
 
-And now filter the list of species in the two meta archipelagos (this is easier in a Terminal). To use the ebd files (big files), we should decompress them from a `.tar` archive and a `.txt.gz` compressed file. I use the Terminal for this, whit the command `tar -0xf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_txt_files/ebd_relJan-2026.txt`, which use a pipe (`|`) and a redirection (`>`) to the folder that will containt the `.txt` file. With that file extracted, we can run the next code in the Terminal.
+Note that we saved the `.RDS` file, which is an object in `R` to facilitate transferring across systems/computers and backup without running again the code.
 
-```{r filterin eBird, eval=FALSE}
+Now we can apply the filter for resident landbird "species" in the two meta archipelagos. To use the ebd files (big files), we should decompress them from a `.tar` archive and a `.txt.gz` compressed file. We can use the Terminal for this, with the command `tar -0xf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_relJan-2026.txt`, which uses a pipe (`|`) and a redirection (`>`) to the folder that will contain the `.txt` file (same as the `.tar`: `ebd_txt_files`). With that file extracted, we can run the next code in the Terminal. But even better, the use of [HiPerGator](https://docs.rc.ufl.edu/) at UF would facilitate this process, although it requires a "scheduler" (`sbatch`) file to run specific codes.
+
+First, we download the ebd file from [eBird](https://ebird.org/data/download/ebd). The file is 220 GB in `.tar` (decompressed is almost 900 GB!). So, we use [Globus](https://docs.rc.ufl.edu/data_transfer/globus/) to transfer the downloaded `.tar` file to the HiPerGator. Once there, we create the `sbatch` for decompressing the `.tar` (`.txt.gz`) to `.txt`. We named this scheduler as `extract_ebd.sh`, located in the same folder `funbiog_eBird/ebd_txt_files` to be run.
+
+```{r, eval = FALSE}
+#!/bin/bash
+
+#SBATCH --job-name=extract_ebd     # Job name 
+#SBATCH --mail-type=END,FAIL          # Mail events 
+#SBATCH --mail-user=oacevedocharry@ufl.edu     # Where to send mail 
+#SBATCH --ntasks=1                    # Run on a single CPU 
+#SBATCH --mem=4gb                     # Job memory request 
+#SBATCH --time=12:00:00               # Time limit hrs:min:sec 
+#SBATCH --output=extract_ebd_%j.log   # Standard output and error log 
+pwd; hostname; date 
+
+echo "Running decompress of ebd file on a single CPU core" 
+
+tar -xOf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_relJan-2026.txt
+
+date
+```
+
+Once the file is created, we run through the Terminal (logged in the HiPerGator) as `sbatch extract_ebd.sh`. We can check the process with `squeue -u oacevedocharry`, with the status (`ST`) running indicated by `R`
+
+```{r eval=FALSE}
+[oacevedocharry@login7 ebd_txt_files]$ sbatch extract_ebd.sh 
+Submitted batch job 37330555
+[oacevedocharry@login7 ebd_txt_files]$ squeue -u oacevedocharry
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+          37330555 hpg-milan extract_ oacevedo  R       1:46      1 c0709a-s2
+```
+
+When finished, HiPerGator sent a message:
+
+```{r eval=FALSE}
+Job ID                  : 37330555
+Cluster                 : hipergator
+User                    : oacevedocharry
+Group                   : rcstudents
+State                   : COMPLETED (exit code 0)
+Cores                   : 1
+CPU Time Used           : 01:20:17
+Wall Time Used          : 01:21:36
+CPU Efficiency          : 98.39%
+Memory Requested        : 4.00 GB (4.00 GB/node)
+Memory Used             : 10.00 MB (10.00 MB/core estimated maximum)
+Memory Efficiency       : 0.24%
+
+```
+
+This process of creating a scheduler to run complex codes will be used for all HiPerGator processes. For instance, for the filtering of the data from the `funbiog_eBird` folder. We generate the `R` code (`1_a_filtering_eBird.R`):
+
+```{r 1_a_filtering_eBird, eval=FALSE}
+########################################
+###~ eBird data - Island filtering 2026 ~####
+########################################
+
+#Packages
+library(auk); #eBird data filters
+library(tidyverse); #manipulate data
+library(dggridR) #Spatiotemporal Subsampling
+library(sf) # Simple Features, to encode spatial vector data
+
 taxa_etal <- readRDS("FunctionalTraits/eBird_func_taxa.RDS") |>
   dplyr::select(scientific_name) |> 
   as.vector()
@@ -163,27 +226,39 @@ colsE <- c("observer_id", "sampling_event_identifier",
            "common_name", "scientific_name",
            "observation_count",
            "country", "state_code", "locality_id", "latitude", "longitude",
-           "protocol_type", "all_species_reported",
+           "observation_type", "all_species_reported",
            "observation_date",
            "time_observations_started",
            "duration_minutes", "effort_distance_km",
            "number_observers")
 
-#all
-f_ebd <- "ebd_txt_files/ebd_Islands.txt" #Temporal file to save the filtering eBird data (records)
+f_ebd_Ca <- "ebd_txt_files/ebd_Caribbean.txt" #Temporal file to save the filtering eBird data (records)
 
-ebd_filt<-auk_ebd("ebd_txt_files/ebd_relJan-2026.txt") %>%
-  auk_bbox(list(CaribbeanRange,
-                IndoMalayRange)) %>% #W, S, E, N
+f_ebd_IM <- "ebd_txt_files/ebd_IndoMalayan.txt" #Temporal file to save the filtering eBird data (records)
+
+ebd_filtCarib<-auk_ebd("ebd_txt_files/ebd_relJan-2026.txt") %>%
+  auk_bbox(CaribbeanRange) %>% #W, S, E, N
   auk_year(c(2015:2025)) %>%
   auk_protocol(c("Traveling", "Stationary")) %>%
   auk_distance(distance = c(0,5)) %>%
   auk_duration(duration = c(0,300))%>%
   auk_complete() %>%
-  auk_filter(f_ebd, overwrite=T, keep = colsE)
+  auk_filter(f_ebd_Ca, overwrite=T, keep = colsE)
+
+ebd_filtIndoM<-auk_ebd("ebd_txt_files/ebd_relJan-2026.txt") %>%
+  auk_bbox(IndoMalayRange) %>% #W, S, E, N
+  auk_year(c(2015:2025)) %>%
+  auk_protocol(c("Traveling", "Stationary")) %>%
+  auk_distance(distance = c(0,5)) %>%
+  auk_duration(duration = c(0,300))%>%
+  auk_complete() %>%
+  auk_filter(f_ebd_IM, overwrite=T, keep = colsE)
 
 # and with read_ebd I apply another filter to do not repeat records from groups
-ebd_Islands <- read_ebd(f_ebd)
+ebd_Caribbean <- read_ebd(f_ebd_Ca) |>
+  mutate(Meta.Archipelago = "Caribbean")
+ebd_IndoMalayan <- read_ebd(f_ebd_IM) |>
+  mutate(Meta.Archipelago = "IndoMalayan")
 
 # Function to convert time observation to hours since midnight
 time_to_decimal <- function(x) {
@@ -192,12 +267,13 @@ time_to_decimal <- function(x) {
 }
 
 #Effort data
-Islands_eff <- ebd_Islands |>
+#Caribbean data
+Carib_eff <- ebd_Caribbean |>
   mutate(
     # I don't want count in X, to convert to NA
     observation_count = as.integer(observation_count),
     # effort_distance_km to 0 for non-travelling counts
-    effort_distance_km = if_else(protocol_type == "Stationary",
+    effort_distance_km = if_else(observation_type == "Stationary",
                                  0, effort_distance_km),
     # convert time to decimal hours since midnight
     time_observations_started = time_to_decimal(time_observations_started),
@@ -215,16 +291,49 @@ Islands_eff <- ebd_Islands |>
          duration_minutes %in% (0:300), #be sure of duration effort
          !is.na(observation_count))      #only records with abundance estimation
 
-Checklists_with_more_Spp <- Islands_eff %>%
+Checklists_with_more_SppC <- Carib_eff %>%
   dplyr::select(checklist_id, scientific_name) %>%
   group_by(checklist_id) %>%
   summarise(N_species = n()) %>%
-  ungroup() %>%
   filter(N_species >= quantile(N_species, 0.25)) # minimum number of species per sampling - 1st Quartile
 
-Islands_cooc <- Islands_eff[Islands_eff$checklist_id %in% Checklists_with_more_Spp$checklist_id, ]
+Caribbean_cooc <- Carib_eff[Carib_eff$checklist_id %in% Checklists_with_more_SppC$checklist_id, ]
 
-saveRDS(Islands_cooc, "results_funbiog/Islands_cooc.RDS")
+saveRDS(Caribbean_cooc, "results_funbiog/Caribbean_cooc.RDS")
+
+#And now with the Oriental-Indo_Malayan-Papuan-Melanesian
+IndoM_eff <- ebd_IndoMalayan |>
+  mutate(
+    # I don't want here count in X, to convert to NA
+    observation_count = as.integer(observation_count),
+    # effort_distance_km to 0 for non-travelling counts
+    effort_distance_km = if_else(observation_type == "Stationary",
+                                 0, effort_distance_km),
+    # convert time to decimal hours since midnight
+    time_observations_started = time_to_decimal(time_observations_started),
+    hour_sampling = round(time_observations_started, 0),
+    # split date into year, month, week, and day of year
+    year = year(observation_date),
+    month = month(observation_date),
+    week = week(observation_date),
+    day_of_year = yday(observation_date),
+    # temporal aggregation - month
+    Time.t = case_when(year == 2015 ~ month,
+                       year > 2015 ~ month+(12*(year-2015)))) |>
+  filter(number_observers <= 10,         #Only list with less than 10 observers
+         effort_distance_km <= 5,        #be sure of distance effort
+         duration_minutes %in% (0:300), #be sure of duration effort
+         !is.na(observation_count))      #remove records without abundance estimation
+
+Checklists_with_more_SppIP <- IndoM_eff %>%
+  dplyr::select(checklist_id, scientific_name) %>%
+  group_by(checklist_id) %>%
+  summarise(N_species = n()) %>%
+  filter(N_species >= quantile(N_species, 0.25)) # minimum number of species per sampling - 1st Quartile
+
+IndoMalayan_cooc <- IndoM_eff[IndoM_eff$checklist_id %in% Checklists_with_more_SppIP$checklist_id, ]
+
+saveRDS(IndoMalayan_cooc, "results_funbiog/IndoMalayan_cooc.RDS")
 
 ##Spatial Grids ####
 
@@ -233,8 +342,7 @@ saveRDS(Islands_cooc, "results_funbiog/Islands_cooc.RDS")
 dggs_island <- dgconstruct(spacing = 11) 
 
 #add a new variable that identify cell
-Islands_cooc_cells <- Islands_cooc |>
-    filter(observation_count < 7000) %>% #there is an outlying count for _Eurylaimus ochromalus_ https://ebird.org/checklist/S112199250
+Caribbean_cooc_cells <- Caribbean_cooc |>
   mutate(cell = dgGEO_to_SEQNUM(dggs_island, #id for cells
                                 longitude, latitude)$seqnum) |>
   group_by(cell, scientific_name, Time.t) |>
@@ -242,40 +350,130 @@ Islands_cooc_cells <- Islands_cooc |>
   mutate(Observed.y = round(max(observation_count))) |> 
   ungroup()
 
-# filter cells with more than 10 localities within
-cells_1stQ <- Islands_cooc_cells |>
+# filter cells with more than 25% (1stQ) localities within
+cells_1stQ_Ca <- Caribbean_cooc_cells |>
   group_by(cell, locality_id) |>
   count() |>
   group_by(cell) |>
   count() |>
   ungroup() |>
-  filter(n >= 10)
+  filter(n >= quantile(n, 0.25))
 
-Islands_SS = Islands_cooc_cells[Islands_cooc_cells$cell %in% cells_1stQ$cell, ]
+Caribbean_SS = Caribbean_cooc_cells[Caribbean_cooc_cells$cell %in% cells_1stQ_Ca$cell, ]
 
-saveRDS(Islands_SS, "results_funbiog/Islands_SS.RDS")
+saveRDS(Caribbean_SS, "results_funbiog/Caribbean_SS.RDS")
+
+# we can extract the list of species per cell as:
+
+Caribbean_List_Spp <- Caribbean_SS |>
+  group_by(cell, scientific_name) |>
+  summarise(count=n())
+
+saveRDS(Caribbean_List_Spp, "results_funbiog/Caribbean_List_Spp.RDS")
 
 # Get the number of records in each cell
-RichnessCell   <- Islands_SS %>%
+RichnessCell_Ca   <- Caribbean_SS %>%
   group_by(cell, scientific_name) %>%
   summarise(count=n()) %>%
   group_by(cell) %>%
   summarise(SpRichness=n())
 
 # Get the grid cell boundaries for cells which had quakes
-gridIslands <- dgcellstogrid(dggs_island,RichnessCell$cell)
+gridCaribbean <- dgcellstogrid(dggs_island, RichnessCell_Ca$cell)
 
 # Update the grid cells' properties to include the number of lists in each cell
-gridIslands <- merge(gridIslands, RichnessCell, by.x = "seqnum", by.y = "cell")
+gridCaribbean <- merge(gridCaribbean, RichnessCell_Ca, by.x = "seqnum", by.y = "cell")
 
 # Handle cells that cross 180 degrees
-wrapped_grid_Islands = st_wrap_dateline(gridIslands,
+wrapped_grid_Caribbean = st_wrap_dateline(gridCaribbean,
                                          options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
 
-saveRDS(wrapped_grid_Islands, "results_funbiog/wrapped_grid_Islands.rds")
+saveRDS(wrapped_grid_Caribbean, "results_funbiog/wrapped_grid_Caribbean.rds")
+
+# and the IndoMalayan
+#add a new variable that identify cell
+IndoMalayan_cooc_cells <- IndoMalayan_cooc |>
+  mutate(cell = dgGEO_to_SEQNUM(dggs_island, #id for cells
+                                longitude, latitude)$seqnum) |>
+  group_by(cell, scientific_name, Time.t) |>
+  # extract the minimum number of individual detected per month per cell of each species
+  mutate(Observed.y = round(max(observation_count))) |> 
+  ungroup()
+
+# filter cells with more than 25% (1stQ) localities within
+cells_1stQ_IM <- IndoMalayan_cooc_cells |>
+  group_by(cell, locality_id) |>
+  count() |>
+  group_by(cell) |>
+  count() |>
+  ungroup() |>
+  filter(n >= quantile(n, 0.25))
+
+IndoMalayan_SS = IndoMalayan_cooc_cells[IndoMalayan_cooc_cells$cell %in% cells_1stQ_Ca$cell, ]
+
+saveRDS(IndoMalayan_SS, "results_funbiog/IndoMalayan_SS.RDS")
+
+# we can extract the list of species per cell as:
+
+IndoMalayan_List_Spp <- IndoMalayan_SS |>
+  group_by(cell, scientific_name) |>
+  summarise(count=n())
+
+saveRDS(IndoMalayan_List_Spp, "results_funbiog/IndoMalayan_List_Spp.RDS")
+
+# Get the number of records in each cell
+RichnessCell_IM   <- IndoMalayan_SS %>%
+  group_by(cell, scientific_name) %>%
+  summarise(count=n()) %>%
+  group_by(cell) %>%
+  summarise(SpRichness=n())
+
+# Get the grid cell boundaries for cells which had quakes
+gridIndoMalayan <- dgcellstogrid(dggs_island, RichnessCell_IM$cell)
+
+# Update the grid cells' properties to include the number of lists in each cell
+gridIndoMalayan <- merge(gridIndoMalayan, RichnessCell_IM, by.x = "seqnum", by.y = "cell")
+
+# Handle cells that cross 180 degrees
+wrapped_grid_IndoMalayan = st_wrap_dateline(gridIndoMalayan,
+                                         options = c("WRAPDATELINE=YES","DATELINEOFFSET=180"), quiet = TRUE)
+
+saveRDS(wrapped_grid_IndoMalayan, "results_funbiog/wrapped_grid_IndoMalayan.rds")
 
 #End of this code
 ```
+
+And then, make the scheduler (`island_filtering.sh`) to run this code:
+
+```{r eval = FALSE}
+#!/bin/bash
+#SBATCH --job-name=Islands_filtering_eBird  # Job name
+#SBATCH --mail-type=ALL                    # Mail events
+#SBATCH --mail-user=oacevedocharry@ufl.edu # Where to send mail
+#SBATCH --ntasks=1                         # Number of processes
+#SBATCH --cpus-per-task=16                 # Number of CPU cores per task or process
+#SBATCH --mem=128gb                         # Increase per processor memory
+#SBATCH --time=30-00:00:00                    # Time limit hrs:min:sec
+#SBATCH --output=Islands_filtering_eBird_%j.log             # Standard output and error log
+#SBATCH --qos=rcstudents
+pwd; hostname; date
+
+echo Working directory is $SLURM_SUBMIT_DIR
+cd $SLURM_SUBMIT_DIR
+
+#loading modules for R
+module purge
+module load R
+
+#Run R script
+Rscript 1_a_filtering_eBird.R
+
+date
+```
+
+Recall, the scheduler is run through the Terminal connected to the HiPerGator with the command `sbatch island_filtering.sh`.
+
+
 
 ## Organizing eBird data for stationary distribution population models
 
