@@ -2,8 +2,9 @@
 title: "Functional biogeography"
 author: "Orlando Acevedo-Charry"
 date: "`r Sys.Date()`"
-output: html_document
-editor_options: 
+output:
+  html_document: default
+editor_options:
   chunk_output_type: console
 ---
 
@@ -35,6 +36,8 @@ library(tidyverse); #manipulate data
 library(auk); #eBird data filters
 library(dggridR) #Spatiotemporal Subsampling
 library(sf) # Simple Features, to encode spatial vector data
+library(patchwork) # arrange multiple figures
+library(funspace) # functional trait space
 ```
 
 ## Islands eBird filtering
@@ -148,7 +151,7 @@ saveRDS(ebird_functional_taxa, "FunctionalTraits/eBird_func_taxa.RDS")
 
 Note that we saved the `.RDS` file, which is an object in `R` to facilitate transferring across systems/computers and backup without running again the code.
 
-Now we can apply the filter for resident landbird "species" in the two meta archipelagos. To use the ebd files (big files), we should decompress them from a `.tar` archive and a `.txt.gz` compressed file. We can use the Terminal for this, with the command `tar -0xf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_relJan-2026.txt`, which uses a pipe (`|`) and a redirection (`>`) to the folder that will contain the `.txt` file (same as the `.tar`: `ebd_txt_files`). With that file extracted, we can run the next code in the Terminal. But even better, the use of [HiPerGator](https://docs.rc.ufl.edu/) at UF would facilitate this process, although it requires a "scheduler" (`sbatch`) file to run specific codes.
+Now we can apply the filter for resident "landbird species" in the two meta archipelagos. To use the ebd files (big files), we should decompress them from a `.tar` archive and a `.txt.gz` compressed file. We can use the Terminal for this, with the command `tar -0xf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_relJan-2026.txt`, which uses a pipe (`|`) and a redirection (`>`) to the folder that will contain the `.txt` file (same as the `.tar`: `ebd_txt_files`). With that file extracted, we can run the next code in the Terminal. But even better, the use of [HiPerGator](https://docs.rc.ufl.edu/) at UF would facilitate this process, although it requires a "scheduler" (`sbatch`) file to run specific codes.
 
 First, we download the ebd file from [eBird](https://ebird.org/data/download/ebd). The file is 220 GB in `.tar` (decompressed is almost 900 GB!). So, we use [Globus](https://docs.rc.ufl.edu/data_transfer/globus/) to transfer the downloaded `.tar` file to the HiPerGator. Once there, we create the `sbatch` for decompressing the `.tar` (`.txt.gz`) to `.txt`. We named this scheduler as `extract_ebd.sh`, located in the same folder `funbiog_eBird/ebd_txt_files` to be run.
 
@@ -409,7 +412,7 @@ cells_1stQ_IM <- IndoMalayan_cooc_cells |>
   ungroup() |>
   filter(n >= quantile(n, 0.25))
 
-IndoMalayan_SS = IndoMalayan_cooc_cells[IndoMalayan_cooc_cells$cell %in% cells_1stQ_Ca$cell, ]
+IndoMalayan_SS = IndoMalayan_cooc_cells[IndoMalayan_cooc_cells$cell %in% cells_1stQ_IM$cell, ]
 
 saveRDS(IndoMalayan_SS, "results_funbiog/IndoMalayan_SS.RDS")
 
@@ -471,18 +474,1252 @@ Rscript 1_a_filtering_eBird.R
 date
 ```
 
-Recall, the scheduler is run through the Terminal connected to the HiPerGator with the command `sbatch island_filtering.sh`.
+Recall, the scheduler is run through the Terminal connected to the HiPerGator with the command `sbatch island_filtering.sh`. When finished, HiPerGator will send a notification
 
+```{r eval=FALSE}
+Job ID                  : 37346924
+Cluster                 : hipergator
+User                    : oacevedocharry
+Group                   : rcstudents
+State                   : COMPLETED (exit code 0)
+Nodes                   : 1
+Cores/Node              : 16
+CPU Time Used           : 04:38:11
+Wall Time Used          : 04:38:19
+CPU Efficiency          : 6.25%
+Memory Requested        : 128.00 GB (128.00 GB/node)
+Memory Used             : 59.90 GB (3.74 GB/core estimated maximum)
+Memory Efficiency       : 46.80%
+```
 
+And we have the `.RDS` files in our folder `results_funbiog`.
 
 ## Organizing eBird data for stationary distribution population models
 
-At the core of our question is the estimation of a expected log-abundance at stationary distribution to weight the functional traits. We used the Stochastic Gompertz State-Space model (see [Dennis & Ponciano](https://doi.org/10.1890/13-1486.1)). 
+At the core of our question is the estimation of a expected log-abundance at stationary distribution to weight the functional traits. We used the Stochastic Gompertz State-Space model (see [Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). 
+
+The discrete time Stochastic Gompertz State-Space model include the ecological submodel of the population dynamic:
+
+$$
+N_t = N_{t-1} e^{a + b \log N_t + E_t};\\
+X_t = \log N_t;\\
+X_t = a + c X_{t-1} + E_t; \\
+E_t \sim \text{Normal}(0, \sigma^2)
+$$
+
+And the observation process:
+$$
+Y_t = X_t + F_t; \\
+F_t \sim \text{Normal}(0, \tau^2)
+$$. 
+
+\noindent where $N_t$ is the latent (unobserved) abundance at time $t$, $a$ and $b$ are constants describing the maximum intrinsic population growth rate and strength of density dependence (see that $c = b + 1$), respectively. $X_t = \log N_t$, and therefore $X_t$ and $Y_t$ are, respectively, the underlying and observed population log-abundance at times $t = 1, 2, ..., q$. The error components include process noise ($E_t$) and observation error ($F_t$), with independent normal distributions with means $0$ and respective variances $\tau^2$ and $\sigma^2$. 
 
 The stochastic differential equation describing the dynamic is:
 $$
 dN(t) = \theta N(t)[\log \kappa - \log N(t)] dt + \beta N(t) dW(t)
 $$
-\noindent in which over a tiny time interval, $dt$, an increment of abundance $dN(t)$ is drawn from a normal distribution with a mean $\theta N(t)[\log \kappa - \log N(t)] dt$ and variance $[\beta N(t)]^2 dt$, where $N(t)$ denotes the current abundance, $t$ the current time of population trajectory, $\theta$ and $\kappa$ are constants of equilibrium abundance and speed of equilibrium, respectively. This dynamic is updated as $N(t) + dN(t)$ and $t + dt$. An infinitesimal increment of the Gompertz growth deterministic skeleton (in ordinary differential form $\frac{dn(t)}{dt} = \theta n(t)[\log \kappa - \log n(t)]$) is perturbed by a random noise $dW(t) \sim \text{Normal}(0, dt)$, in which intensity of the noise is scaled by $\beta N(t)$ with $\beta > 0$, denoting the environmental stochasticity. This is a diffusion process with infinitesimal mean $m(n) = \theta n(\log \kappa - \log n)$ and infinitesimal variance $v(n) = \beta^2n^2$. Let $X(t) = g(N(t))$ be a smooth invertible transformation (e.g., $\log N(t)$), the infinitesimal mean $m_{X}$ and variance $v_X$ of $X(t)$ are given by the Itô transformation formulas: $m_X(x) = m(n)g'(n) + (1/2)v(n)g''(n)$, $v_X(x) = v(n)[g'(n)]^2$, with $n = g^{-1}(x)$ and $g'$ and $g''$ representing first and second derivatives. Thus, a given diffusion process might be transformed to a scale, which exist for the stochastic Gompertz model.
+\noindent in which over a tiny time interval, $dt$, an increment of abundance $dN(t)$ is drawn from a normal distribution with a mean $\theta N(t)[\log \kappa - \log N(t)] dt$ and variance $[\beta N(t)]^2 dt$, where $N(t)$ denotes the current abundance, $t$ the current time of population trajectory, $\theta$ and $\kappa$ are constants of equilibrium abundance and speed of equilibrium, respectively. This dynamic is updated as $N(t) + dN(t)$ and $t + dt$. An infinitesimal increment of the Gompertz growth deterministic skeleton (in ordinary differential form $\frac{dn(t)}{dt} = \theta n(t)[\log \kappa - \log n(t)]$) is perturbed by a random noise $dW(t) \sim \text{Normal}(0, dt)$, in which intensity of the noise is scaled by $\beta N(t)$ with $\beta > 0$, denoting the environmental stochasticity. This is a diffusion process with infinitesimal mean $m(n) = \theta n(\log \kappa - \log n)$ and infinitesimal variance $v(n) = \beta^2n^2$. Let $X(t) = g(N(t))$ be a smooth invertible transformation (e.g., $\log N(t)$), the infinitesimal mean $m_{X}$ and variance $v_X$ of $X(t)$ are given by the Itô transformation formulas: $m_X(x) = m(n)g'(n) + (1/2)v(n)g''(n)$, $v_X(x) = v(n)[g'(n)]^2$, with $n = g^{-1}(x)$ and $g'$ and $g''$ representing first and second derivatives. Thus, a given diffusion process might be transformed to a scale, which exist for the stochastic Gompertz model ([Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)).
 
-The transformation of the stochastic Gompertz model ($X(t) = \log N(t)$) converts the population abundance into the Ornstein-Uhlenbeck diffusion process, with infinitesimal mean $$
+The transformation of the stochastic Gompertz model ($X(t) = \log N(t)$) converts the population (log) abundance into the Ornstein-Uhlenbeck diffusion process, with infinitesimal mean $m_X(x) = \theta (\mu - x)$ and variance $v_X(x) = \beta^2$, where $\mu = \log \kappa - \frac{\beta^2}{2 \theta}$. The stochastic differential equation that defines the OU process for $X(t)$ is $dX(t) = \theta[\mu - X(t)]dt + \beta dW(t)$. Therefore, $X(t)$ has a normal transition probability distribution with a mean function $\text{E}[X(t) | X(0) = x_0] = \mu - (\mu - x_0)e^{-\theta t}$, where $x_o = \log n_0$ (see more in [Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). As time $t$ becomes large, this transition distribution converges to a normal stationary distribution with mean $\text{E}[X(\infty)] = \mu$ and variance $\text{V}[X(\infty)] = \frac{\beta^2}{2 \theta}$. Therefore, on the original scale, the stationary distribution is a lognormal distribution of a cloud of points around the state, latent abundance oscillate, representing a stochastic counterpart to the equilibrium point of deterministic "carrying capacity". The parameters of the ecological process in this continuous form of the stochastic Gompertz model have the equivalent in the discrete time model: $\mu = \frac{a}{1-c}$, $\theta = -\log(c)$, $\beta^2 = \frac{-[2 \sigma^2 \log (c)]}{(1-c^2)}$, while $\tau^2$ is the same for both continuous and discrete models.
+
+The state-space model formulation (OUSS) is, therefore, complemented with the observation submodel. The observations $Y(0), Y(t_1), Y(t_2), ..., Y(t_q)$ are estimates or indices of log-population abundance recorded at times $t_0=0, t_1, ..., t_q$, not needed to be equally spaced ([Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). In our case, it could be the log of the maximum observed counts in a month for each species across each spatiotemporal sampling unit from eBird ($\log O_t = Y_t$). This observed population log-abundance came from potentially 132 months (11 years between 2015-2025), we selected those combination of species/sampling unit of > 12 months to fit the OUSS model.
+
+We can organize the data filtered from eBird as time series per sampling unit for each species.
+
+```{r 2_eBird_data_filter_for_OUSS, eval=FALSE}
+# Organizing eBird data for stationary distribution population models
+
+#### Packages ####
+library(tidyverse)
+
+#### Data from eBird ####
+
+Caribbean_SS <- readRDS("results_funbiog/Caribbean_SS.RDS") |>
+  as.data.frame()
+
+Caribbean_OUSS_Cells <- Caribbean_SS |>
+  group_by(scientific_name, cell, Time.t) |> 
+  count() |>
+  group_by(cell, scientific_name) |>
+  count() |>
+  filter(n > 12) |> # at least 12 months in 11 years (132 months; between 2015-2025)
+  as.data.frame() |>
+  rename(n.time = n)
+
+Caribbean_OUSS <- Caribbean_SS |>
+  left_join(Caribbean_OUSS_Cells) |>
+  filter(!is.na(n.time)) 
+
+Caribbean_OUSS$cell <- as.character(Caribbean_OUSS$cell)
+
+saveRDS(Caribbean_OUSS, "results_funbiog/Caribbean_preOUSS.RDS")
+
+# and now with the Indo Pacific region
+
+IndoPacific_SS <- readRDS("results_funbiog/IndoMalayan_SS.RDS") |>
+  as.data.frame()
+
+IndoPacific_OUSS_Cells <- IndoPacific_SS |>
+  group_by(scientific_name, cell, Time.t) |> 
+  count() |>
+  group_by(cell, scientific_name) |>
+  count() |>
+  filter(n > 12) |> # at least 12 months in 11 years (132 months; between 2015-2025)
+  as.data.frame() |>
+  rename(n.time = n)
+
+IndoPacific_OUSS <- IndoPacific_SS |>
+  left_join(IndoPacific_OUSS_Cells) |>
+  filter(!is.na(n.time)) 
+
+IndoPacific_OUSS$cell <- as.character(IndoPacific_OUSS$cell)
+
+saveRDS(IndoPacific_OUSS, "results_funbiog/IndoMalayan_preOUSS.RDS")
+
+# End of this code
+```
+
+with it's corresponding scheduler `data_for_ouss.sh`
+
+```{r data_for_ouss, eval=FALSE}
+#!/bin/bash
+#SBATCH --job-name=eBird_data_for_OUSS  # Job name
+#SBATCH --mail-type=ALL                    # Mail events
+#SBATCH --mail-user=oacevedocharry@ufl.edu # Where to send mail
+#SBATCH --nodes=1                    # Run all processes on a single node
+#SBATCH --ntasks=1                         # Number of processes
+#SBATCH --cpus-per-task=1                 # Number of CPU cores per task or process
+#SBATCH --mem=32gb                         # Increase per processor memory
+#SBATCH --time=13-00:00:00                    # Time limit hrs:min:sec
+#SBATCH --output=eBird_data_for_OUSS_%j.log             # Standard output and error log
+#SBATCH --qos=rcstudents
+pwd; hostname; date
+
+echo Working directory is $SLURM_SUBMIT_DIR
+cd $SLURM_SUBMIT_DIR
+
+#loading modules for R
+module purge
+module load R
+
+#Run R script
+Rscript 2_eBird_data_filter_for_OUSS.R
+
+date
+```
+
+Having the message when it is done:
+
+```{r, eval=FALSE}
+Job ID                  : 37506571
+Cluster                 : hipergator
+User                    : oacevedocharry
+Group                   : rcstudents
+State                   : COMPLETED (exit code 0)
+Cores                   : 1
+CPU Time Used           : 00:09:26
+Wall Time Used          : 00:09:30
+CPU Efficiency          : 99.30%
+Memory Requested        : 32.00 GB (32.00 GB/node)
+Memory Used             : 29.58 GB (29.58 GB/core estimated maximum)
+Memory Efficiency       : 92.44%
+```
+
+
+## Fit eBird data stationary distribution population models
+
+To fit the OUSS model more effectively, we can run it in parallel in the HiPerGator. The `R` codes `3_stationary_abundance_OUSS_Caribbean.R` and `3_stationary_abundance_OUSS_IndoMalayan.R` do this.
+
+### Fitting Caribbean meta archipelago
+
+```{r 3_stationary_abundance_OUSS_Caribbean, eval=FALSE}
+# Stationary abundance from eBird in parallel
+
+#### Packages ####
+#R functions and datasets to support "Modern Applied Statistics with S", 
+#a book from W.N. Venables and B.D. Ripley
+library(MASS)
+library(tidyverse)
+
+# Wrapped function to estimate OUSS parameters in parallel process. 
+ # Data should include: 
+	# `scientific_name` for species i
+	# `cell` for site or spatial unit m
+	# `Time.t` as the time steps for the time series
+	# `Observed.y` as the observed abundance`
+
+#### Functions OUSS fit ####
+   # Multivariate normal random number generator - State Space models
+   randmvn <- function(n, mu.vec, cov.mat){  
+   # Save the length of the mean vector of the multivariate normal distribution to sample
+   p         <- length(mu.vec);
+   # The Cholesky decomposition 
+   #(factorization of a real symmetric positive-definite sqr matriz)
+   Tau       <- chol(cov.mat, pivot=TRUE);
+   # generate normal deviates outside loop
+   Zmat      <- matrix(rnorm(n = p  *n, mean = 0 , sd = 1), 
+                       nrow = p, ncol = n);
+   # empty matrix
+   out       <- matrix(0, nrow = p, ncol = n);
+   # iterate
+   for(i in 1:n){
+     Z       <- Zmat[,i];
+     out[,i] <- t(Tau) %*% Z + mu.vec
+    } 
+    return(out)
+   }
+
+  # Initial values guess of the parameters
+  guess_ouss <- function(yt, tt){
+   # Time-vector starting in 0.
+   t.i     <- tt - tt[1];
+   # Number of time-series transitions
+   q       <- length(yt) - 1;
+   # length of time-series
+   qp1     <- q + 1;
+   # time intervals
+   t.s     <- t.i[2:qp1] - t.i[1:q];
+   # mean of the observations as assumed to arise from stationary distribution
+   Ybar    <- mean(yt);
+   # Variance of the observations
+   Yvar    <- sum((yt - Ybar) * (yt - Ybar)) / q;
+   # Initial mu estimate (at stationary distribution)
+   mu1     <- Ybar;
+   # Kludge an initial value for a based on mean of Y(t+s) given Y(t).
+   th1     <- -mean(log(abs((yt[2:qp1] - mu1) / (yt[1:q] - mu1))) / t.s);
+   # Moment estimate using stationary distribution
+   bsq1    <- 2 * th1 * Yvar / (1 + 2 * th1);
+   # Observation error variance, assumed as first guess as betasq=tausq.
+   tsq1    <- bsq1; 
+   # What to do if initial guesses is three 0's (or NAs)? Assume arbitrary values
+   three0s <- sum(c(th1, bsq1, tsq1)) 
+   if(three0s == 0 | is.na(three0s)){
+     th1   <- 0.5;
+     bsq1  <- 0.09;
+     tsq1  <- 0.23;}  
+   out1    <- c(th1, bsq1, tsq1);
+   # What to do if initial guesses are too little? Assume arbitrary values
+   if(sum(out1 < 1e-7) >= 1){
+     out1  <- c(0.5, 0.09, 0.23)}
+     out   <- c(mu1, out1); 
+     return(abs(out))
+   }
+
+  # Neg-log likelihood
+  negloglike_ouss_reml = function(yt, tt, fguess){
+   # Constrains parameters theta, beta^2, and tau^2 > 0 
+   # speed of equilibration (Eq1 in DP_E)
+   theta  <- exp(fguess[2]);
+   # variability of process noise
+   betasq <- exp(fguess[3]);
+   # variability of sampling
+   tausq  <- exp(fguess[4]);
+   # number of time-series transitions
+   q      <- length(yt) - 1;
+   # length of time-series
+   qp1    <- q + 1;
+   # Variance (Eq11 in DP_E)
+   Var.inf<- betasq / (2 * theta);
+   # time intervals (not used here?)
+   t.s    <- tt[2:qp1] - tt[1:q];
+   # part of Eq18 in DP_E
+   t.cols <- matrix(rep(tt, each = qp1),
+                    nrow = qp1,
+                    ncol = qp1,
+                    byrow = FALSE);
+   # (part of Eq18 in DP_E)
+   t.rows <- t(t.cols);
+   # (part of Eq18 in DP_E)
+   abs.diffs     <- abs(t.rows - t.cols); 
+   # Covariance of the process (Eq18 in DP_E)
+   Sigma.mat     <- Var.inf * exp(-theta * abs.diffs);
+   # Create a matrix full of 0s of the length of time series
+   Itausq <- matrix(0, qp1, qp1);
+   # Repeat the observation error variance guess in the diagonal of the matrix
+   diag(Itausq)  <- rep(tausq, qp1);
+   # add Covariance with the matrix
+   V      <- Sigma.mat + Itausq;
+   # Create the differencing matrix **D**
+   Dmat   <- cbind(-diag(1, q), matrix(0, q, 1)) + cbind(matrix(0, q, 1), diag(1, q));
+   # Variance-covariance matrix **Phi** (Eq20 DP_E)
+   Phi.mat<- Dmat %*% V %*% t(Dmat);
+   # simple differencing of the observations (W_i? )
+   wt     <- yt[2:qp1] - yt[1:q]; 
+   # note the signs change because we want here the negative log-likelihood (Eq22*-1)
+   neglogl<- (q / 2) * log(2 * pi) + (1 / 2) * log(det(Phi.mat)) + (1/2) * wt %*% ginv(Phi.mat) %*% wt; 
+   # What to do if the `neglogl` is not finite? assign a big number of 50000
+   if(is.infinite(neglogl) == TRUE){
+     return(50000)}else{
+       return(neglogl)}
+  }
+
+  # OUSS Restricted Maximum Likelihood estimation
+  ouss_reml <- function(yt, tt, fguess){ 
+   # Time-vector starting in 0.
+   t.i           <- tt - tt[1];
+   # Number of time-series transitions
+   # length of time-series
+   q             <- length(yt) - 1;
+   qp1           <- q + 1;
+   # time intervals
+   t.s           <- t.i[2:qp1] - t.i[1:q];
+   # initial guesses (all, but negloglike.OU.reml will use only fguess[2:4])
+   guess.optim   <- c(fguess[1],
+                      log(fguess[2:4]));
+   # numerical optimization
+   optim.out     <- optim(par = guess.optim,
+                          fn = negloglike_ouss_reml,
+                          method = "Nelder-Mead",
+                          yt = yt,
+                          tt = t.i);
+   # Restricted maximum likelihood estimates (reml) and lnL.hat
+   remls        <- exp(optim.out$par);
+   theta.reml   <- remls[2];
+   betasq.reml  <- remls[3];
+   tausq.reml   <- remls[4]; 
+   lnL.hat       <- -optim.out$value[1];  
+   # Variance (Eq11 in DP_E)
+   Var.inf       <- betasq.reml / (2 * theta.reml)
+   # creates an matrix full of 1 dim qp1 x qp1
+   vx            <- matrix(1, qp1, qp1);
+   # iterate to fill the matrix (couldn't find vx in DP_E!)
+   for (t.i in 1:q){
+     vx[(t.i + 1):qp1,t.i] = exp(-theta.reml * cumsum(t.s[t.i:q]));
+     vx[t.i, (t.i + 1):qp1] = vx[(t.i + 1):qp1, t.i];
+   }
+   Sigma.mat     <- vx * Var.inf;
+   # Create a matrix full of 0s of the length of time series
+   Itausq        <- matrix(0, qp1, qp1);
+   # Repeat the observation error variance reml in the diagonal of the matrix
+   diag(Itausq)  <- rep(tausq.reml, qp1);
+   # Variance-covariance matrix (V.hat) evaluated with remls to estimate mu.hat
+   V.reml       <- Sigma.mat + Itausq;
+   # column vector matrix of ones
+   j             <- matrix(1, qp1, 1);
+   # Inverse matrix (part of Eq23 in DP_E)
+   Vinv          <- ginv(V.reml);
+   # reml of mu (mu.hat) with Eq23 in DP_E
+   mu.reml      <- (t(j) %*% Vinv %*% yt) / (t(j) %*% Vinv %*% j);
+   #AIC
+   AIC           <- -2 * lnL.hat + 2 * 4 #where 4 = length(mles)...
+   #Results
+   out           <- list(remls = c(mu.reml,
+                                    theta.reml,
+                                    betasq.reml,
+                                    tausq.reml),
+                         lnLhat = lnL.hat,
+                         AIC = AIC)
+   return(out)
+  }  
+
+
+# estimate OUSS parameters in a dataset ####
+estimate_ouss_parallel <- function(data, n_cores = 6) {
+  library(foreach)
+  library(doParallel)
+  library(dplyr)
+  library(MASS)
+  
+  # Set up parallel backend
+  cl <- makeCluster(n_cores)
+  on.exit(stopCluster(cl), add = TRUE)
+  
+  registerDoParallel(cl)
+  
+  # Create unique species-site combinations
+  combos <- data |>
+    dplyr::select(scientific_name, 
+                  cell,
+                  Time.t,
+                  Observed.y) |>
+    group_by(scientific_name, cell) |>
+    dplyr::group_split()
+  
+  # Message in the log file
+  cat(sprintf(
+  "[%s] Species-cell combinations: %s\n",
+  Sys.time(),
+  length(combos)
+  ))
+
+  cat(sprintf(
+    "[%s] Beginning parallel estimation\n",
+    Sys.time()
+    ))
+  
+  # Run parallel estimation
+  results_list <- foreach(
+    idx = seq_along(combos),
+    .packages = c("tidyverse", "MASS"),
+    .export = c(
+      "combos",
+      "randmvn",
+      "guess_ouss",
+      "negloglike_ouss_reml",
+      "ouss_reml"
+      )
+    ) %dopar% {
+      
+      timeseries <- combos[[idx]]
+
+      i <- unique(timeseries$scientific_name)
+      m <- unique(timeseries$cell)
+
+   # Timeseries construction
+    timeseries <- timeseries |>
+      group_by(Time.t) |>
+      summarise(Observed.y = max(Observed.y),
+                .groups = "drop")
+    
+    if (nrow(timeseries) == 0) return(NULL)
+  
+  # Time series objects (log abundance + time steps)
+    yt <- log(timeseries$Observed.y)
+    tt <- timeseries$Time.t
+
+  # Fit OUSS parallel process ####
+    fguess <- guess_ouss(yt = yt, tt = tt)
+    ouss_im <- ouss_reml(yt = yt, tt = tt, fguess = fguess)
+    
+    mu_hat <- ouss_im$remls[1]
+    theta_hat <- ouss_im$remls[2]
+    betasqr_hat <- ouss_im$remls[3]
+    tausqrt_hat <- ouss_im$remls[4]
+    Var_Xinf <- betasqr_hat / (2 * theta_hat)   # Eq 11 Dennis & Ponciano Ecology 2014
+    
+    if(Var_Xinf < 2){
+      omega_hat <- exp(mu_hat + Var_Xinf / 2) # Eq 49 Dennis et al. Ecol Monogr 2006
+    } else {
+      omega_hat <- exp(mu_hat)              # Eq 10 Dennis & Ponciano Ecology 2014
+    }
+    
+    data.frame(scientific_name = i, 
+               cell = m,
+               omega_hat = omega_hat,
+               tausqrt_hat = tausqrt_hat,
+               mu_hat = mu_hat,
+               theta_hat = theta_hat,
+               betasqr_hat = betasqr_hat,
+               Var_Xinf = Var_Xinf)
+  }
+  
+  cat(sprintf(
+    "[%s] Parallel estimation completed\n",
+    Sys.time()
+    ))
+  
+  results_df <- bind_rows(results_list)
+  
+  cat(sprintf(
+  "[%s] Rows in output: %s\n",
+  Sys.time(),
+  nrow(results_df)
+  ))
+  
+  return(results_df)
+
+}
+
+# Fit the model for the Caribbean Meta-Archipelago ####
+
+  
+cat(sprintf(
+  "[%s] Reading Caribbean dataset\n",
+  Sys.time()
+))
+
+# Load dataset and name of region
+data <- readRDS("results_funbiog/Caribbean_preOUSS.RDS")
+
+cat(sprintf(
+  "[%s] Dataset loaded: %s rows\n",
+  Sys.time(),
+  nrow(data)
+))
+
+# Run estimation
+  
+cat(sprintf(
+  "[%s] Starting parallel estimation using 6 cores\n",
+  Sys.time()
+))
+
+param_df <- estimate_ouss_parallel(data, n_cores = 6)
+saveRDS(param_df, paste0("results_funbiog/Caribbean_OUSS_parms_df.RDS"))
+
+cat(sprintf(
+  "[%s] Parallel estimation completed and saved\n",
+  Sys.time()
+))
+
+# Join and save
+data <- data |>
+  left_join(param_df, by = c("scientific_name", "cell"))
+saveRDS(data, paste0("results_funbiog/Caribbean_OUSS_with_parms.RDS"))
+
+# Create cell assembly and save
+cell_assembly <- data |>
+  dplyr::select(cell, scientific_name, omega_hat) |>
+  pivot_wider(names_from = cell,
+              values_from = omega_hat,
+              values_fill = 0,
+              values_fn = mean)
+
+saveRDS(cell_assembly, paste0("results_funbiog/Caribbean_Cell_Assembly_OUSS.RDS"))
+
+# End of this code
+```
+
+With the scheduler code `Caribbean_OUSS_fit.sh`:
+
+```{r eval = FALSE}
+#!/bin/bash
+#SBATCH --job-name=OUSS_Array_Caribbean
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=oacevedocharry@ufl.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=24gb
+#SBATCH --time=4-00:00:00
+#SBATCH --output=OUSS_Array_Ca_%A_%a.log
+#SBATCH --qos=rcstudents
+
+pwd; hostname; date
+
+echo "Working directory is $SLURM_SUBMIT_DIR"
+cd $SLURM_SUBMIT_DIR
+
+module purge
+module load R
+
+# Run the R script with the appropriate dataset
+
+Rscript 3_stationary_abundance_OUSS_Caribbean.R 
+
+date
+```
+
+And the outcome message
+
+```{r, eval=FALSE}
+Job ID                  : 37512128
+Cluster                 : hipergator
+User                    : oacevedocharry
+Group                   : rcstudents
+State                   : COMPLETED (exit code 0)
+Nodes                   : 1
+Cores/Node              : 6
+CPU Time Used           : 00:08:36
+Wall Time Used          : 3-19:22:34
+CPU Efficiency          : 0.03%
+Memory Requested        : 128.00 GB (128.00 GB/node)
+Memory Used             : 21.79 GB (3.63 GB/core estimated maximum)
+Memory Efficiency       : 17.03%
+```
+
+### Fitting Indo-Pacific meta archipelago
+
+Now with the Indo-Pacific meta archipelago
+
+```{r 3_stationary_abundance_OUSS_IndoMalayan, eval=FALSE}
+# Stationary abundance from eBird in parallel
+
+#### Packages ####
+#R functions and datasets to support "Modern Applied Statistics with S", 
+#a book from W.N. Venables and B.D. Ripley
+library(MASS)
+library(tidyverse)
+
+# Wrapped function to estimate OUSS parameters in parallel process. 
+ # Data should include: 
+	# `scientific_name` for species i
+	# `cell` for site or spatial unit m
+	# `Time.t` as the time steps for the time series
+	# `Observed.y` as the observed abundance`
+
+#### Functions OUSS fit ####
+   # Multivariate normal random number generator - State Space models
+   randmvn <- function(n, mu.vec, cov.mat){  
+   # Save the length of the mean vector of the multivariate normal distribution to sample
+   p         <- length(mu.vec);
+   # The Cholesky decomposition 
+   #(factorization of a real symmetric positive-definite sqr matriz)
+   Tau       <- chol(cov.mat, pivot=TRUE);
+   # generate normal deviates outside loop
+   Zmat      <- matrix(rnorm(n = p  *n, mean = 0 , sd = 1), 
+                       nrow = p, ncol = n);
+   # empty matrix
+   out       <- matrix(0, nrow = p, ncol = n);
+   # iterate
+   for(i in 1:n){
+     Z       <- Zmat[,i];
+     out[,i] <- t(Tau) %*% Z + mu.vec
+    } 
+    return(out)
+   }
+
+  # Initial values guess of the parameters
+  guess_ouss <- function(yt, tt){
+   # Time-vector starting in 0.
+   t.i     <- tt - tt[1];
+   # Number of time-series transitions
+   q       <- length(yt) - 1;
+   # length of time-series
+   qp1     <- q + 1;
+   # time intervals
+   t.s     <- t.i[2:qp1] - t.i[1:q];
+   # mean of the observations as assumed to arise from stationary distribution
+   Ybar    <- mean(yt);
+   # Variance of the observations
+   Yvar    <- sum((yt - Ybar) * (yt - Ybar)) / q;
+   # Initial mu estimate (at stationary distribution)
+   mu1     <- Ybar;
+   # Kludge an initial value for a based on mean of Y(t+s) given Y(t).
+   th1     <- -mean(log(abs((yt[2:qp1] - mu1) / (yt[1:q] - mu1))) / t.s);
+   # Moment estimate using stationary distribution
+   bsq1    <- 2 * th1 * Yvar / (1 + 2 * th1);
+   # Observation error variance, assumed as first guess as betasq=tausq.
+   tsq1    <- bsq1; 
+   # What to do if initial guesses is three 0's (or NAs)? Assume arbitrary values
+   three0s <- sum(c(th1, bsq1, tsq1)) 
+   if(three0s == 0 | is.na(three0s)){
+     th1   <- 0.5;
+     bsq1  <- 0.09;
+     tsq1  <- 0.23;}  
+   out1    <- c(th1, bsq1, tsq1);
+   # What to do if initial guesses are too little? Assume arbitrary values
+   if(sum(out1 < 1e-7) >= 1){
+     out1  <- c(0.5, 0.09, 0.23)}
+     out   <- c(mu1, out1); 
+     return(abs(out))
+   }
+
+  # Neg-log likelihood
+  negloglike_ouss_reml = function(yt, tt, fguess){
+   # Constrains parameters theta, beta^2, and tau^2 > 0 
+   # speed of equilibration (Eq1 in DP_E)
+   theta  <- exp(fguess[2]);
+   # variability of process noise
+   betasq <- exp(fguess[3]);
+   # variability of sampling
+   tausq  <- exp(fguess[4]);
+   # number of time-series transitions
+   q      <- length(yt) - 1;
+   # length of time-series
+   qp1    <- q + 1;
+   # Variance (Eq11 in DP_E)
+   Var.inf<- betasq / (2 * theta);
+   # time intervals (not used here?)
+   t.s    <- tt[2:qp1] - tt[1:q];
+   # part of Eq18 in DP_E
+   t.cols <- matrix(rep(tt, each = qp1),
+                    nrow = qp1,
+                    ncol = qp1,
+                    byrow = FALSE);
+   # (part of Eq18 in DP_E)
+   t.rows <- t(t.cols);
+   # (part of Eq18 in DP_E)
+   abs.diffs     <- abs(t.rows - t.cols); 
+   # Covariance of the process (Eq18 in DP_E)
+   Sigma.mat     <- Var.inf * exp(-theta * abs.diffs);
+   # Create a matrix full of 0s of the length of time series
+   Itausq <- matrix(0, qp1, qp1);
+   # Repeat the observation error variance guess in the diagonal of the matrix
+   diag(Itausq)  <- rep(tausq, qp1);
+   # add Covariance with the matrix
+   V      <- Sigma.mat + Itausq;
+   # Create the differencing matrix **D**
+   Dmat   <- cbind(-diag(1, q), matrix(0, q, 1)) + cbind(matrix(0, q, 1), diag(1, q));
+   # Variance-covariance matrix **Phi** (Eq20 DP_E)
+   Phi.mat<- Dmat %*% V %*% t(Dmat);
+   # simple differencing of the observations (W_i? )
+   wt     <- yt[2:qp1] - yt[1:q]; 
+   # note the signs change because we want here the negative log-likelihood (Eq22*-1)
+   neglogl<- (q / 2) * log(2 * pi) + (1 / 2) * log(det(Phi.mat)) + (1/2) * wt %*% ginv(Phi.mat) %*% wt; 
+   # What to do if the `neglogl` is not finite? assign a big number of 50000
+   if(is.infinite(neglogl) == TRUE){
+     return(50000)}else{
+       return(neglogl)}
+  }
+
+  # OUSS Restricted Maximum Likelihood estimation
+  ouss_reml <- function(yt, tt, fguess){ 
+   # Time-vector starting in 0.
+   t.i           <- tt - tt[1];
+   # Number of time-series transitions
+   # length of time-series
+   q             <- length(yt) - 1;
+   qp1           <- q + 1;
+   # time intervals
+   t.s           <- t.i[2:qp1] - t.i[1:q];
+   # initial guesses (all, but negloglike.OU.reml will use only fguess[2:4])
+   guess.optim   <- c(fguess[1],
+                      log(fguess[2:4]));
+   # numerical optimization
+   optim.out     <- optim(par = guess.optim,
+                          fn = negloglike_ouss_reml,
+                          method = "Nelder-Mead",
+                          yt = yt,
+                          tt = t.i);
+   # Restricted maximum likelihood estimates (reml) and lnL.hat
+   remls        <- exp(optim.out$par);
+   theta.reml   <- remls[2];
+   betasq.reml  <- remls[3];
+   tausq.reml   <- remls[4]; 
+   lnL.hat       <- -optim.out$value[1];  
+   # Variance (Eq11 in DP_E)
+   Var.inf       <- betasq.reml / (2 * theta.reml)
+   # creates an matrix full of 1 dim qp1 x qp1
+   vx            <- matrix(1, qp1, qp1);
+   # iterate to fill the matrix (couldn't find vx in DP_E!)
+   for (t.i in 1:q){
+     vx[(t.i + 1):qp1,t.i] = exp(-theta.reml * cumsum(t.s[t.i:q]));
+     vx[t.i, (t.i + 1):qp1] = vx[(t.i + 1):qp1, t.i];
+   }
+   Sigma.mat     <- vx * Var.inf;
+   # Create a matrix full of 0s of the length of time series
+   Itausq        <- matrix(0, qp1, qp1);
+   # Repeat the observation error variance reml in the diagonal of the matrix
+   diag(Itausq)  <- rep(tausq.reml, qp1);
+   # Variance-covariance matrix (V.hat) evaluated with remls to estimate mu.hat
+   V.reml       <- Sigma.mat + Itausq;
+   # column vector matrix of ones
+   j             <- matrix(1, qp1, 1);
+   # Inverse matrix (part of Eq23 in DP_E)
+   Vinv          <- ginv(V.reml);
+   # reml of mu (mu.hat) with Eq23 in DP_E
+   mu.reml      <- (t(j) %*% Vinv %*% yt) / (t(j) %*% Vinv %*% j);
+   #AIC
+   AIC           <- -2 * lnL.hat + 2 * 4 #where 4 = length(mles)...
+   #Results
+   out           <- list(remls = c(mu.reml,
+                                    theta.reml,
+                                    betasq.reml,
+                                    tausq.reml),
+                         lnLhat = lnL.hat,
+                         AIC = AIC)
+   return(out)
+  }  
+
+
+# estimate OUSS parameters in a dataset ####
+estimate_ouss_parallel <- function(data, n_cores = 6) {
+  library(foreach)
+  library(doParallel)
+  library(dplyr)
+  library(MASS)
+  
+  # Set up parallel backend
+  cl <- makeCluster(n_cores)
+  on.exit(stopCluster(cl), add = TRUE)
+  
+  registerDoParallel(cl)
+  
+  # Create unique species-site combinations
+  combos <- data |>
+    dplyr::select(scientific_name, 
+                  cell,
+                  Time.t,
+                  Observed.y) |>
+    group_by(scientific_name, cell) |>
+    dplyr::group_split()
+  
+  # Message in the log file
+  cat(sprintf(
+  "[%s] Species-cell combinations: %s\n",
+  Sys.time(),
+  length(combos)
+  ))
+
+  cat(sprintf(
+    "[%s] Beginning parallel estimation\n",
+    Sys.time()
+    ))
+  
+  # Run parallel estimation
+  results_list <- foreach(
+    idx = seq_along(combos),
+    .packages = c("tidyverse", "MASS"),
+    .export = c(
+      "combos",
+      "randmvn",
+      "guess_ouss",
+      "negloglike_ouss_reml",
+      "ouss_reml"
+      )
+    ) %dopar% {
+      
+      timeseries <- combos[[idx]]
+
+      i <- unique(timeseries$scientific_name)
+      m <- unique(timeseries$cell)
+
+   # Timeseries construction
+    timeseries <- timeseries |>
+      group_by(Time.t) |>
+      summarise(Observed.y = max(Observed.y),
+                .groups = "drop")
+    
+    if (nrow(timeseries) == 0) return(NULL)
+  
+  # Time series objects (log abundance + time steps)
+    yt <- log(timeseries$Observed.y)
+    tt <- timeseries$Time.t
+
+  # Fit OUSS parallel process ####
+    fguess <- guess_ouss(yt = yt, tt = tt)
+    ouss_im <- ouss_reml(yt = yt, tt = tt, fguess = fguess)
+    
+    mu_hat <- ouss_im$remls[1]
+    theta_hat <- ouss_im$remls[2]
+    betasqr_hat <- ouss_im$remls[3]
+    tausqrt_hat <- ouss_im$remls[4]
+    Var_Xinf <- betasqr_hat / (2 * theta_hat)   # Eq 11 Dennis & Ponciano Ecology 2014
+    
+    if(Var_Xinf < 2){
+      omega_hat <- exp(mu_hat + Var_Xinf / 2) # Eq 49 Dennis et al. Ecol Monogr 2006
+    } else {
+      omega_hat <- exp(mu_hat)              # Eq 10 Dennis & Ponciano Ecology 2014
+    }
+    
+    data.frame(scientific_name = i, 
+               cell = m,
+               omega_hat = omega_hat,
+               tausqrt_hat = tausqrt_hat,
+               mu_hat = mu_hat,
+               theta_hat = theta_hat,
+               betasqr_hat = betasqr_hat,
+               Var_Xinf = Var_Xinf)
+  }
+  
+  cat(sprintf(
+    "[%s] Parallel estimation completed\n",
+    Sys.time()
+    ))
+  
+  results_df <- bind_rows(results_list)
+  
+  cat(sprintf(
+  "[%s] Rows in output: %s\n",
+  Sys.time(),
+  nrow(results_df)
+  ))
+  
+  return(results_df)
+
+}
+
+# Fit the model for the IndoMalayan Meta-Archipelago ####
+
+  
+cat(sprintf(
+  "[%s] Reading IndoMalayan dataset\n",
+  Sys.time()
+))
+
+# Load dataset and name of region
+data <- readRDS("results_funbiog/IndoMalayan_preOUSS.RDS")
+
+cat(sprintf(
+  "[%s] Dataset loaded: %s rows\n",
+  Sys.time(),
+  nrow(data)
+))
+
+# Run estimation
+  
+cat(sprintf(
+  "[%s] Starting parallel estimation using 6 cores\n",
+  Sys.time()
+))
+
+param_df <- estimate_ouss_parallel(data, n_cores = 6)
+saveRDS(param_df, paste0("results_funbiog/IndoMalayan_OUSS_parms_df.RDS"))
+
+cat(sprintf(
+  "[%s] Parallel estimation completed and saved\n",
+  Sys.time()
+))
+
+# Join and save
+data <- data |>
+  left_join(param_df, by = c("scientific_name", "cell"))
+saveRDS(data, paste0("results_funbiog/IndoMalayan_OUSS_with_parms.RDS"))
+
+# Create cell assembly and save
+cell_assembly <- data |>
+  dplyr::select(cell, scientific_name, omega_hat) |>
+  pivot_wider(names_from = cell,
+              values_from = omega_hat,
+              values_fill = 0,
+              values_fn = mean)
+
+saveRDS(cell_assembly, paste0("results_funbiog/IndoMalayan_Cell_Assembly_OUSS.RDS"))
+
+# End of this code
+```
+
+With the scheduler code `IndoMalayan_OUSS_fit.sh`:
+```{r eval = FALSE}
+#!/bin/bash
+#SBATCH --job-name=OUSS_Array_IndoMalayan
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=oacevedocharry@ufl.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=24gb
+#SBATCH --time=4-00:00:00
+#SBATCH --output=OUSS_Array_IM_%A_%a.log
+#SBATCH --qos=rcstudents
+
+pwd; hostname; date
+
+echo "Working directory is $SLURM_SUBMIT_DIR"
+cd $SLURM_SUBMIT_DIR
+
+module purge
+module load R
+
+# Run the R script with the appropriate dataset
+
+Rscript 3_stationary_abundance_OUSS_IndoMalayan.R 
+
+date
+```
+
+And the outcome message
+
+```{r, eval=FALSE}
+Job ID                  : 37510169
+Cluster                 : hipergator
+User                    : oacevedocharry
+Group                   : rcstudents
+State                   : COMPLETED (exit code 0)
+Nodes                   : 1
+Cores/Node              : 6
+CPU Time Used           : 00:02:19
+Wall Time Used          : 14:45:19
+CPU Efficiency          : 0.04%
+Memory Requested        : 24.00 GB (24.00 GB/node)
+Memory Used             : 5.74 GB (979.19 MB/core estimated maximum)
+Memory Efficiency       : 23.91%
+```
+
+Despite the lower `CPU Efficiency` reported, using less memory ended in an `OUT_OF_MEMORY` state in previous attempts.
+
+## Functional trait space
+
+### Spatial assignation for the filtered and fitted records
+
+Data records from eBird (after filtering and fitting the population dynamics models)
+
+```{r, eval = FALSE}
+Caribbean_Spp_sf <- readRDS("results_funbiog/Caribbean_OUSS_with_parms.RDS") |>
+  group_by(scientific_name, cell) |>
+  summarise(latitude = mean(latitude, na.rm = TRUE),
+            longitude = mean(longitude, na.rm = TRUE),
+            mu_hat = mean(mu_hat, na.rm = TRUE),
+            omega_hat = mean(omega_hat, na.rm = TRUE)) |>
+  as.data.frame() |>
+  mutate(Meta.Archipelago = "Caribbean") |>
+  st_as_sf(coords = c("longitude", "latitude"),
+           crs = 4326)
+
+IndoPacific_Spp_sf <- readRDS("results_funbiog/IndoMalayan_OUSS_with_parms.RDS") |> 
+  group_by(scientific_name, cell) |>
+  summarise(latitude = mean(latitude, na.rm = TRUE),
+            longitude = mean(longitude, na.rm = TRUE),
+            mu_hat = mean(mu_hat, na.rm = TRUE),
+            omega_hat = mean(omega_hat, na.rm = TRUE)) |>
+  as.data.frame() |>
+  mutate(Meta.Archipelago = "Indo.Pacific") |>
+  st_as_sf(coords = c("longitude", "latitude"),
+           crs = 4326)
+
+islands_spp_cells <- rbind(Caribbean_Spp_sf, IndoPacific_Spp_sf)
+
+# recover latitude and longitude
+islands_spp_cells$longitude <- st_coordinates(islands_spp_cells)[, 1]
+islands_spp_cells$latitude <- st_coordinates(islands_spp_cells)[, 2]
+
+# save backup
+saveRDS(islands_spp_cells, "results_funbiog/islands_spp_cells.RDS")
+```
+
+Load polygons of the meta-archipelagos and 
+
+```{r eval = FALSE}
+islands_spp_cells <- readRDS("results_funbiog/islands_spp_cells.RDS")
+
+# Mainland in america polygon
+mainland_sf <- st_read("Coastline_Islands/Mainland_coastline.shp") |>
+  st_transform(crs = 4326) |>
+  mutate(subregion = "Mainland")
+
+# Caribbean ####
+# Continental Islands polygon
+cont_isln_Car <- st_read("Coastline_Islands/ContinentalIslands.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Caribbean - Continental islands")
+# Greater Antilles polygon
+gr_antilles <- st_read("Coastline_Islands/GreaterAntilles.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Caribbean - Greater Antilles")
+# Kalinago or Lesser Antilles polygon
+kalinago <- st_read("Coastline_Islands/Kalinago.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Caribbean - Kalinago")
+# Lucayan or Bahamas polygon
+lucayan <- st_read("Coastline_Islands/Lucayan.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Caribbean - Lucayan")
+
+# Oriental-Indo-Malayan ####
+# Andaman & Nicobar polygon
+andaman <- st_read("Coastline_Islands/AndamanNicobar.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Oriental-Indo-Malayan - Andaman & Nicobar")
+# Continental Islands - Oriental polygon
+cont_isln_OrInd <- st_read("Coastline_Islands/ContinentalIslandsOriental.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Oriental-Indo-Malayan - Continental islands")
+# Philippines polygon
+philippines <- st_read("Coastline_Islands/Philippines.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Oriental-Indo-Malayan - Philippines")
+# Sunda Islands polygon
+sunda <- st_read("Coastline_Islands/SundaIslands.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Oriental-Indo-Malayan - Sunda islands")
+# Wallacea polygon
+wallacea <- st_read("Coastline_Islands/Wallacea.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Oriental-Indo-Malayan - Wallacea")
+
+# Papuan-Melanesian ####
+# Bismarck polygon
+bismarcks <- st_read("Coastline_Islands/Biskmark.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Papuan-Melanesian - Bismarcks")
+# New Guinea and Australian continental islands polygon
+papua <- st_read("Coastline_Islands/NewGuinea_AU_ContIslands.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Papuan-Melanesian - Papua")
+# Solomons polygon
+solomons <- st_read("Coastline_Islands/Solomon.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Papuan-Melanesian - Solomons")
+# Vanuatu polygon
+vanuatu <- st_read("Coastline_Islands/Vanuatu.shp") |>
+  st_transform(crs = 4326) |>
+  st_make_valid() |>
+  mutate(subregion = "Papuan-Melanesian - Vanuatu")
+
+# Combine the sf objects for the islands
+islands_sf <- rbind(cont_isln_Car, gr_antilles, kalinago, lucayan, 
+                     cont_isln_OrInd, andaman, philippines, sunda, wallacea,  
+                     papua, bismarcks, solomons, vanuatu)
+
+# Save backup
+saveRDS(islands_sf, "results_funbiog/islands_sf.RDS")
+
+# Spatial join to filter points withIN the mainland ####
+mainland_cells <- st_join(islands_spp_cells, 
+                           mainland_sf, 
+                           join = st_within)
+
+#Filter only points within the mainland
+mainland_cells <- mainland_cells[!is.na(mainland_cells$subregion), ]
+# 214789 observations
+
+#recover latitude and longitude
+mainland_cells$longitude <- st_coordinates(mainland_cells)[, 1]
+mainland_cells$latitude <- st_coordinates(mainland_cells)[, 2]
+
+#bring back the df structure
+spp_cell_mainland <- mainland_cells |>
+  st_drop_geometry() |>
+  as.data.frame()
+
+# Spatial join to filter points withOUT the mainland ####
+island_cells <- st_join(islands_spp_cells, 
+                          islands_sf, 
+                          join = st_within)
+
+#Filter only points withOUT the mainland
+island_cells <- island_cells[!is.na(island_cells$subregion), ]
+# 52020 (this removes islands out of our regions - Micronesia)
+
+#recover latitude and longitude
+island_cells$longitude <- st_coordinates(island_cells)[, 1]
+island_cells$latitude <- st_coordinates(island_cells)[, 2]
+
+#bring back the df structure
+spp_cell_islands <- island_cells |>
+  st_drop_geometry() |>
+  as.data.frame()
+
+# Combine df with subregion #### 
+spp_cell_df <- spp_cell_mainland |> 
+  full_join(spp_cell_islands)
+
+# Save data for PCAs figures ####
+
+saveRDS(spp_cell_df, "results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
+```
+
+### Functional traits imputation
+
+```{r, eval=FALSE}
+spp_cell_df <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
+
+functraits <- readRDS("FunctionalTraits/eBird_func_taxa.RDS") |>
+  filter(scientific_name %in% spp_cell_df$scientific_name) |>
+  as.data.frame()
+
+summary(functraits) # there are some NAs in many traits
+
+# Phylogenetic tree
+birds_phylo <- ape::read.nexus("summary_dated_clements.nex")
+length(birds_phylo$tip.label)
+
+# column following the same format
+functraits$phylo_name <- gsub(" ", "_", functraits$scientific_name)
+
+# trees work with the rowname as the taxa
+rownames(functraits) <- functraits$phylo_name
+
+# to see the traits to impute
+names(functraits)
+
+# impute in NAs from the phylogenetic information
+imputed_traits <- impute(functraits[,c(2:18)], phylo = birds_phylo)
+
+# Save the imputed traits
+functraits_global <- imputed_traits$imputed
+
+functraits_global$scientific_name <- functraits$scientific_name
+
+saveRDS(functraits_global, "FunctionalTraits/birds_functraits_global_imputed.RDS")
+```
+
+### Functional traits to Community Weighted Mean
+
+```{r}
+birds_phylo <- ape::read.nexus("summary_dated_clements.nex")
+functraits_global <- readRDS("FunctionalTraits/birds_functraits_global_imputed.RDS")
+spp_cell_df <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
+
+spp_cell_df_func <- spp_cell_df |>
+  left_join(functraits_global) |>
+  group_by(cell, scientific_name) |>
+  # mean abundance per species per cell
+  mutate(mu_hat = mean(mu_hat, na.rm = TRUE),
+         omega_hat = mean(omega_hat, na.rm = TRUE)) |>
+  as.data.frame() 
+
+names(spp_cell_df_func)
+```
+
+For every trait $j$ and sampling unit (cell) $m$, we calculated the cell-level trait means as community-weighted mean:
+
+$$
+CWM_{j,m} = \sum_s^{n_m} p_{s,m} t_{s,j}
+$$
+
+\noindent where $n_m$ is the number of species per cell $m$, $p_{s,m}$ is the relative abundance of species $s$ in plot $m$ (computed from the sum of estimated log-abundance mean at stationarity $\mu$), and $t_{s,j}$ is the mean value of species $s$ for trait $j$. This is achieved with the function `weighted.mean()` in `R`. But we can also compute the within-cell trait variance with the community-weighted variance as:
+
+$$
+CWV_{j,m} = \sum_s^{n_m} p_{s,m} (t_{s,j} - CWM_{j,m})^2
+$$
+
+We generated the function:
+
+```{r}
+# function to compute the community weighted variance
+cwv <- function(x, wt, CWM){
+  sum(wt*(x-CWM)^2)
+}
+```
+
+**AQUI VOY**
+
+```{r}
+# Calculating the CWM and CWV
+
+islands_cwm_mu_summary <- spp_cell_df_func |>
+  group_by(cell, Meta.Archipelago, subregion) |>
+  mutate(total_mu_hat = sum(mu_hat)) |> 
+  ungroup() |>
+  mutate(rel_mu = mu_hat/total_mu_hat) |> 
+  group_by(cell, Meta.Archipelago, subregion) |> 
+  summarise(spp_richness = n(),
+          # CWM
+            # dispersal morphology
+            `body mass` = weighted.mean(`log (Body mass)`, rel_mu, na.rm = T),
+            `hand wing index` = weighted.mean(`Hand Wing Index`, rel_mu, na.rm = T),
+            # foraging morphology
+            `tarsus length` = weighted.mean(tar.len, rel_mu, na.rm = T),
+            `wing length` = weighted.mean(win.len, rel_mu, na.rm = T),
+            # dietary morphology
+            `beak length` = weighted.mean(bea.len, rel_mu, na.rm = T), 
+            `beak width` = weighted.mean(bea.wid, rel_mu, na.rm = T),
+            `beak depth` = weighted.mean(bea.dep, rel_mu, na.rm = T), 
+            # ecological niche
+            `body length` = weighted.mean(bod.len, rel_mu, na.rm = T), #highly correlated
+            `habitat breadth` = weighted.mean(hab.bre, rel_mu, na.rm = T),
+            `range size` = weighted.mean(ran.siz, rel_mu, na.rm = T),
+              # converting 0-1 index to 1-2 (log10 transformation)
+            `endemic insularity` = (weighted.mean(end.ins, rel_mu, na.rm = T)+1),
+            # foraging niche 
+              # converting 0-1 index to 1-2 (log10 transformation)
+            pred = (weighted.mean(predatory, rel_mu, na.rm = T)+1),
+            # converting 0-1 index to 1-2 (log10 transformation)
+            `diet generalist` = (weighted.mean(generalist, rel_mu, na.rm = T)+1),
+          # behavioral / reproductive niche
+            verticality = weighted.mean(vertical, rel_mu, na.rm = T),
+            `nest structure breadth` = weighted.mean(nes.str.bre, rel_mu, na.rm = T),
+            `nest location breadth` = weighted.mean(nes.loc.bre, rel_mu, na.rm = T),
+          # CWV  
+            # dispersal morphology 
+            `bmass cwv` = cwv(bod.mas, rel_mu, `body mass`), 
+            `hwi cwv` = cwv(hwi, rel_mu, `hand wing index`),
+            # foraging morphology
+            `tarsus cwv` = cwv(tar.len, rel_mu, `tarsus length`),
+            `wing cwv` = cwv(win.len, rel_mu, `wing length`),
+            # dietary morphology
+            `beak l cwv` = cwv(bea.len, rel_mu, `beak length`), 
+            `beak w cwv` = cwv(bea.wid, rel_mu, `beak width`),
+            `beak d cwv` = cwv(bea.dep, rel_mu, `beak depth`), 
+          # ecological niche
+          `body l cwv` = cwv(bod.len, rel_mu, `body length`),
+          `habitat b cwv` = cwv(hab.bre, rel_mu, `habitat breadth`),
+          `range cwv` = cwv(ran.siz, rel_mu, `range size`),
+          # converting 0-1 index to 1-2 (log10 transformation)
+          `insularity cwv` = (cwv(end.ins, rel_mu, `endemic insularity`)),
+          # foraging niche 
+          # converting 0-1 index to 1-2 (log10 transformation)
+          `predatory cwv` = (cwv(predatory, rel_mu, pred)),
+          # converting 0-1 index to 1-2 (log10 transformation)
+          `generalist cwv` = (cwv(generalist, rel_mu, `diet generalist`)),
+          # behavioral / reproductive niche
+          `verticality cwv` = cwv(vertical, rel_mu, verticality),
+          `nest str cwv` = cwv(nes.str.bre, rel_mu, `nest structure breadth`),
+          `nest loc cwv` = cwv(nes.loc.bre, rel_mu, `nest location breadth`),
+            ) # 17 spp is the 1st quartile, but this reduces a lot 
+```
