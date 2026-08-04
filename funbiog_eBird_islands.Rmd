@@ -38,11 +38,18 @@ library(dggridR) #Spatiotemporal Subsampling
 library(sf) # Simple Features, to encode spatial vector data
 library(patchwork) # arrange multiple figures
 library(funspace) # functional trait space
+library(vegan) # betadisper for "expansion" tests
+library(emmeans) # Estimated marginal means
+library(pairwiseAdonis) # pairwise adonis for "shifts" tests
 ```
 
 ## Islands eBird filtering
 
-We downloaded all eBird data up to January 2026. To reduce the size of this files and filter accordingly to our aim, we select species considered Sedentary or Resident that do NOT occupy specific primary habitats Sea, Wetland, Riparian, or Coastal (only "land birds"), using the Mobility and Habitat trait groups in [Şekercioğlu et al. (2025)](https://www.nature.com/articles/s41597-025-05615-3). We combine the eBird taxonomy with different bird trait databases to generate a list of taxa to filter in eBird (the code could be names as `0_resident_landbirds_list.R`):
+We downloaded all eBird data up to January 2026. To reduce the size of this files and filter accordingly to our aim, we select species considered Sedentary or Resident that do NOT occupy specific primary habitats Sea, Wetland, Riparian, or Coastal (only "land birds"), using the Mobility and Habitat trait groups in [Şekercioğlu et al. (2025)](https://www.nature.com/articles/s41597-025-05615-3). 
+
+### Functional traits across relaxed taxonomy
+
+We combine the eBird taxonomy with different bird trait databases to generate a list of taxa to filter in eBird (the code could be names as `0_resident_landbirds_list.R`):
 
 ```{r eBird list matching taxonomy of functional traits, eval=FALSE}
 # eBird at 2025 will be my taxonomy (to filter in the ebd file)
@@ -150,6 +157,8 @@ saveRDS(ebird_functional_taxa, "FunctionalTraits/eBird_func_taxa.RDS")
 ```
 
 Note that we saved the `.RDS` file, which is an object in `R` to facilitate transferring across systems/computers and backup without running again the code.
+
+### eBird filtering through the HiPerGator
 
 Now we can apply the filter for resident "landbird species" in the two meta archipelagos. To use the ebd files (big files), we should decompress them from a `.tar` archive and a `.txt.gz` compressed file. We can use the Terminal for this, with the command `tar -0xf ebd_relJan-2026.tar ebd_relJan-2026.txt.gz | gunzip > ebd_relJan-2026.txt`, which uses a pipe (`|`) and a redirection (`>`) to the folder that will contain the `.txt` file (same as the `.tar`: `ebd_txt_files`). With that file extracted, we can run the next code in the Terminal. But even better, the use of [HiPerGator](https://docs.rc.ufl.edu/) at UF would facilitate this process, although it requires a "scheduler" (`sbatch`) file to run specific codes.
 
@@ -513,17 +522,17 @@ Y_t = X_t + F_t; \\
 F_t \sim \text{Normal}(0, \tau^2)
 $$. 
 
-\noindent where $N_t$ is the latent (unobserved) abundance at time $t$, $a$ and $b$ are constants describing the maximum intrinsic population growth rate and strength of density dependence (see that $c = b + 1$), respectively. $X_t = \log N_t$, and therefore $X_t$ and $Y_t$ are, respectively, the underlying and observed population log-abundance at times $t = 1, 2, ..., q$. The error components include process noise ($E_t$) and observation error ($F_t$), with independent normal distributions with means $0$ and respective variances $\tau^2$ and $\sigma^2$. 
+\noindent where $N_t$ is the latent (unobserved) abundance at time $t$, $a$ and $b$ are constants describing the maximum intrinsic population growth rate and strength of density dependence (see that $c = b + 1$), respectively. Let $X_t = \log N_t$, and therefore $X_t$ and $Y_t$ are, respectively, the underlying and observed population log-abundance at times $t = 1, 2, ..., q$. The error components include process noise ($E_t$) and observation error ($F_t$), with independent normal distributions with means $0$ and respective variances $\sigma^2$ and $\tau^2$. 
 
 The stochastic differential equation describing the dynamic is:
 $$
 dN(t) = \theta N(t)[\log \kappa - \log N(t)] dt + \beta N(t) dW(t)
 $$
-\noindent in which over a tiny time interval, $dt$, an increment of abundance $dN(t)$ is drawn from a normal distribution with a mean $\theta N(t)[\log \kappa - \log N(t)] dt$ and variance $[\beta N(t)]^2 dt$, where $N(t)$ denotes the current abundance, $t$ the current time of population trajectory, $\theta$ and $\kappa$ are constants of equilibrium abundance and speed of equilibrium, respectively. This dynamic is updated as $N(t) + dN(t)$ and $t + dt$. An infinitesimal increment of the Gompertz growth deterministic skeleton (in ordinary differential form $\frac{dn(t)}{dt} = \theta n(t)[\log \kappa - \log n(t)]$) is perturbed by a random noise $dW(t) \sim \text{Normal}(0, dt)$, in which intensity of the noise is scaled by $\beta N(t)$ with $\beta > 0$, denoting the environmental stochasticity. This is a diffusion process with infinitesimal mean $m(n) = \theta n(\log \kappa - \log n)$ and infinitesimal variance $v(n) = \beta^2n^2$. Let $X(t) = g(N(t))$ be a smooth invertible transformation (e.g., $\log N(t)$), the infinitesimal mean $m_{X}$ and variance $v_X$ of $X(t)$ are given by the Itô transformation formulas: $m_X(x) = m(n)g'(n) + (1/2)v(n)g''(n)$, $v_X(x) = v(n)[g'(n)]^2$, with $n = g^{-1}(x)$ and $g'$ and $g''$ representing first and second derivatives. Thus, a given diffusion process might be transformed to a scale, which exist for the stochastic Gompertz model ([Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)).
+\noindent in which over a tiny time interval, $dt$, an tiny increment of abundance $dN(t)$ is drawn from a normal distribution with a mean $\theta N(t)[\log \kappa - \log N(t)] dt$ and variance $[\beta N(t)]^2 dt$, where $N(t)$ denotes the current abundance, $t$ the current time of population trajectory, whereas $\theta$ and $\kappa$ are constants of equilibrium abundance and speed of equilibrium, respectively. This dynamic is updated as $N(t) + dN(t)$ and $t + dt$. An infinitesimal increment of the Gompertz growth deterministic skeleton (in ordinary differential form $\frac{dn(t)}{dt} = \theta n(t)[\log \kappa - \log n(t)]$) is perturbed by a random noise $dW(t) \sim \text{Normal}(0, dt)$, in which intensity of the noise is scaled by $\beta N(t)$ with $\beta > 0$, denoting the environmental stochasticity. This is a diffusion process with infinitesimal mean $m(n) = \theta n(\log \kappa - \log n)$ and infinitesimal variance $v(n) = \beta^2n^2$. Let $X(t) = g(N(t))$ be a smooth invertible transformation (e.g., $\log N(t)$), the infinitesimal mean $m_{X}$ and variance $v_X$ of $X(t)$ are given by the Itô transformation formulas: $m_X(x) = m(n)g'(n) + (1/2)v(n)g''(n)$, $v_X(x) = v(n)[g'(n)]^2$, with $n = g^{-1}(x)$ and $g'$ and $g''$ representing first and second derivatives. Thus, a given diffusion process might be transformed to a scale discrete process, which exist for the stochastic Gompertz model ([Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)).
 
-The transformation of the stochastic Gompertz model ($X(t) = \log N(t)$) converts the population (log) abundance into the Ornstein-Uhlenbeck diffusion process, with infinitesimal mean $m_X(x) = \theta (\mu - x)$ and variance $v_X(x) = \beta^2$, where $\mu = \log \kappa - \frac{\beta^2}{2 \theta}$. The stochastic differential equation that defines the OU process for $X(t)$ is $dX(t) = \theta[\mu - X(t)]dt + \beta dW(t)$. Therefore, $X(t)$ has a normal transition probability distribution with a mean function $\text{E}[X(t) | X(0) = x_0] = \mu - (\mu - x_0)e^{-\theta t}$, where $x_o = \log n_0$ (see more in [Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). As time $t$ becomes large, this transition distribution converges to a normal stationary distribution with mean $\text{E}[X(\infty)] = \mu$ and variance $\text{V}[X(\infty)] = \frac{\beta^2}{2 \theta}$. Therefore, on the original scale, the stationary distribution is a lognormal distribution of a cloud of points around the state, latent abundance oscillate, representing a stochastic counterpart to the equilibrium point of deterministic "carrying capacity". The parameters of the ecological process in this continuous form of the stochastic Gompertz model have the equivalent in the discrete time model: $\mu = \frac{a}{1-c}$, $\theta = -\log(c)$, $\beta^2 = \frac{-[2 \sigma^2 \log (c)]}{(1-c^2)}$, while $\tau^2$ is the same for both continuous and discrete models.
+The transformation of the stochastic Gompertz model ($X(t) = \log N(t)$) converts the population (log) abundance into the Ornstein-Uhlenbeck diffusion process, with infinitesimal mean $m_X(x) = \theta (\mu - x)$ and variance $v_X(x) = \beta^2$, where $\mu = \log \kappa - \frac{\beta^2}{2 \theta}$. The stochastic differential equation that defines the OU process for $X(t)$ is $dX(t) = \theta[\mu - X(t)]dt + \beta dW(t)$. Therefore, $X(t)$ has a normal transition probability distribution with a mean function $\text{E}[X(t) | X(0) = x_0] = \mu - (\mu - x_0)e^{-\theta t}$, where $x_o = \log n_0$ (see more in [Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). As time $t$ becomes large, this transition distribution converges to a normal stationary distribution with mean $\text{E}[X(\infty)] = \mu$ and variance $\text{V}[X(\infty)] = \frac{\beta^2}{2 \theta}$. Therefore, on the original scale, the stationary distribution is a lognormal distribution of a cloud of points oscillating around the state, latent abundance, representing a stochastic counterpart to the equilibrium point of deterministic "carrying capacity". The parameters of the ecological process in this continuous form of the stochastic Gompertz model have the equivalent in the discrete time model: $\mu = \frac{a}{1-c}$, $\theta = -\log(c)$, $\beta^2 = \frac{-[2 \sigma^2 \log (c)]}{(1-c^2)}$, while $\tau^2$ is the same for both continuous and discrete models.
 
-The state-space model formulation (OUSS) is, therefore, complemented with the observation submodel. The observations $Y(0), Y(t_1), Y(t_2), ..., Y(t_q)$ are estimates or indices of log-population abundance recorded at times $t_0=0, t_1, ..., t_q$, not needed to be equally spaced ([Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). In our case, it could be the log of the maximum observed counts in a month for each species across each spatiotemporal sampling unit from eBird ($\log O_t = Y_t$). This observed population log-abundance came from potentially 132 months (11 years between 2015-2025), we selected those combination of species/sampling unit of > 12 months to fit the OUSS model.
+The state-space model formulation (OUSS) is, therefore, complemented with the observation submodel. The observations $Y(0), Y(t_1), Y(t_2), ..., Y(t_q)$ are estimates or indices of log-population abundance recorded at times $t_0 = 0, t_1, ..., t_q$, not needed to be equally spaced ([Dennis & Ponciano 2014](https://doi.org/10.1890/13-1486.1)). In our case, it could be the log of the maximum observed counts in a month for each species across each spatiotemporal sampling unit from eBird ($\log O_t = Y_t$). This observed population log-abundance came from potentially 132 months (11 years between 2015-2025), we selected those combination of species/sampling unit of > 12 months to fit the OUSS model.
 
 We can organize the data filtered from eBird as time series per sampling unit for each species.
 
@@ -1410,6 +1419,62 @@ Memory Efficiency       : 23.91%
 
 Despite the lower `CPU Efficiency` reported, using less memory ended in an `OUT_OF_MEMORY` state in previous attempts.
 
+### Does the fitted model reflect variance in abundance in the gradient?
+
+Let's see the *Coereba flaveola* estimates across the Caribbean
+
+```{r}
+banana <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS") |>
+  filter(scientific_name == "Coereba flaveola") |>
+  mutate(subregion = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Caribbean - Continental islands", "Continental islands",
+                     ifelse(subregion == "Caribbean - Greater Antilles", "Greater Antilles",
+                     ifelse(subregion == "Caribbean - Kalinago", "Lesser Antilles (Kalinago)",
+                     ifelse(subregion == "Caribbean - Lucayan", "Bahamas (Lucayan)",
+                     subregion))))),
+         subregion = factor(subregion, levels = c("Mainland",
+                                                  "Continental islands",
+                                                  "Greater Antilles",
+                                                  "Lesser Antilles (Kalinago)",
+                                                  "Bahamas (Lucayan)")))
+
+ggplot(banana, aes(x = exp(mu_hat), fill = subregion, color = subregion)) +
+  geom_density(alpha = 0.2) +
+  geom_point(aes(y = 0), shape = "|") +
+  facet_wrap(~subregion, ncol = 1, scales = "free_y") +
+  scale_color_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  scale_fill_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  labs(x = "Expected abundance mean at stationarity", 
+       y = "",
+       fill = "",
+       color = "") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+# map
+world1 <- sf::st_as_sf(maps::map(database = 'world', plot = FALSE, fill = TRUE))
+
+ggplot() +
+  geom_sf(data = world1) +
+  geom_point(data = banana |>
+               group_by(cell) |> 
+               sample_n(size = 1), 
+             aes(x = longitude, y = latitude, 
+                 color = subregion, size = exp(mu_hat)), 
+             shape = 21, stroke = 0.5, fill = NA, alpha = 0.8) +
+  scale_color_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  scale_size_continuous(range = c(0.05, 5)) +
+  coord_sf(xlim = c(-91, -59), 
+           ylim =  c(8, 27),
+           expand = T) +
+  labs(color = "", size = expression(exp^hat(mu))) +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(nrow = 3, byrow = TRUE), 
+         size = guide_legend(direction = "vertical"))
+
+```
+
 ## Functional trait space
 
 ### Spatial assignation for the filtered and fitted records
@@ -1589,7 +1654,42 @@ saveRDS(spp_cell_df, "results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
 spp_cell_df <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
 
 functraits <- readRDS("FunctionalTraits/eBird_func_taxa.RDS") |>
-  filter(scientific_name %in% spp_cell_df$scientific_name) |>
+  filter(scientific_name %in% spp_cell_df$scientific_name) 
+
+birdbase_long <- read_csv("FunctionalTraits/BirdBase.csv") |> 
+  # only sedentary or resident species NOT from the Sea, Wetland, Riparian, or Coastal primary habitat
+  filter(`Mobility - Sedentary or Resident` == 1,
+         `Habitat - Primary Habitat` != "Sea", 
+         `Habitat - Primary Habitat` != "Wetland", 
+         `Habitat - Primary Habitat` != "Riparian",
+         `Habitat - Primary Habitat` != "Coastal") |>
+  # adjust traits for functional space estimation
+  mutate(ESI = log10(100 / (`Habitat - Habitat Breadth` * (`Diet - Diet Breadth` + 0.1))), 
+         `Body mass` = log(`Body Mass - Average`), 
+         `Clutch size` = ((`Reproductive Behavior - Max Clutch Size` + `Reproductive Behavior - Min Clutch Size`) / 2),
+         `Number of broods` = ((`Reproductive Behavior - Max Number of Broods` + `Reproductive Behavior - Min Number of Broods`) / 2),
+         `Nest location breadth` = str_count(`Reproductive Behavior - Nest Substrate`, "[A-Za-z]"), 
+         `Nest type breadth` = ifelse(`Reproductive Behavior - Nest Type` == "", 0, str_count(`Reproductive Behavior - Nest Type`, ",") + 1)) |>
+  # in long format
+  pivot_longer(    
+    cols = c(`Latin (BirdLife_IOC_Clements_AviList)`,
+             `HBW/BirdLife International (v9.1)`,
+             `IOC World Bird List (v15.1)`,
+             `eBird/Clements (V2024b)`,
+             `AviList v1 2025`),    
+    names_to = "taxonomy_source_birdbase",    
+    values_to = "species_name"  
+    ) |>
+  filter(!is.na(species_name)) |>
+  dplyr::select(species_name, `Habitat - Primary Habitat`, `Diet - Vertebrate`) |>
+  mutate(`Diet - Vertebrate` = as.numeric(ifelse(`Diet - Vertebrate` == "T", 0.1,
+                                                 `Diet - Vertebrate`))) |>
+  unique() |> 
+  as.data.frame()
+
+functraits <- functraits |>
+  filter(scientific_name %in% birdbase_long$species_name) |>
+  left_join(birdbase_long |> rename(scientific_name = species_name)) |>
   as.data.frame()
 
 summary(functraits) # there are some NAs in many traits
@@ -1608,7 +1708,7 @@ rownames(functraits) <- functraits$phylo_name
 names(functraits)
 
 # impute in NAs from the phylogenetic information
-imputed_traits <- impute(functraits[,c(2:18)], phylo = birds_phylo)
+imputed_traits <- impute(functraits[,c(2:18,20)], phylo = birds_phylo)
 
 # Save the imputed traits
 functraits_global <- imputed_traits$imputed
@@ -1621,9 +1721,14 @@ saveRDS(functraits_global, "FunctionalTraits/birds_functraits_global_imputed.RDS
 ### Functional traits to Community Weighted Mean
 
 ```{r}
+# Phylogenetic information
 birds_phylo <- ape::read.nexus("summary_dated_clements.nex")
-functraits_global <- readRDS("FunctionalTraits/birds_functraits_global_imputed.RDS")
-spp_cell_df <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
+
+# global functional traits (after imputation)
+functraits_global <- readRDS("FunctionalTraits/birds_functraits_global_imputed.RDS") 
+
+spp_cell_df <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS") |>
+  filter(scientific_name %in% functraits_global$scientific_name)
 
 spp_cell_df_func <- spp_cell_df |>
   left_join(functraits_global) |>
@@ -1639,13 +1744,13 @@ names(spp_cell_df_func)
 For every trait $j$ and sampling unit (cell) $m$, we calculated the cell-level trait means as community-weighted mean:
 
 $$
-CWM_{j,m} = \sum_s^{n_m} p_{s,m} t_{s,j}
+\textit{CWM}_{j,m} = \sum_s^{S_m} r_{s,m} t_{s,j}
 $$
 
-\noindent where $n_m$ is the number of species per cell $m$, $p_{s,m}$ is the relative abundance of species $s$ in plot $m$ (computed from the sum of estimated log-abundance mean at stationarity $\mu$), and $t_{s,j}$ is the mean value of species $s$ for trait $j$. This is achieved with the function `weighted.mean()` in `R`. But we can also compute the within-cell trait variance with the community-weighted variance as:
+\noindent where $S_m$ is the number of species per cell $m$, $r_{s,m}$ is the relative abundance of species $s$ in plot $m$ (computed from the sum of estimated log-abundance mean at stationarity $\mu$), and $t_{s,j}$ is the mean value of species $s$ for trait $j$. This is achieved with the function `weighted.mean()` in `R`. But we can also compute the within-cell trait variance with the community-weighted variance as:
 
 $$
-CWV_{j,m} = \sum_s^{n_m} p_{s,m} (t_{s,j} - CWM_{j,m})^2
+\textit{CWV}_{j,m} = \sum_s^{S_m} r_{s,m} (t_{s,j} - CWM_{j,m})^2
 $$
 
 We generated the function:
@@ -1657,7 +1762,7 @@ cwv <- function(x, wt, CWM){
 }
 ```
 
-**AQUI VOY**
+And compute the `CWM` and `CWV`
 
 ```{r}
 # Calculating the CWM and CWV
@@ -1669,57 +1774,1302 @@ islands_cwm_mu_summary <- spp_cell_df_func |>
   mutate(rel_mu = mu_hat/total_mu_hat) |> 
   group_by(cell, Meta.Archipelago, subregion) |> 
   summarise(spp_richness = n(),
+            pred_richness = sum(`Diet - Vertebrate` > 5, na.rm = TRUE),
           # CWM
-            # dispersal morphology
             `body mass` = weighted.mean(`log (Body mass)`, rel_mu, na.rm = T),
             `hand wing index` = weighted.mean(`Hand Wing Index`, rel_mu, na.rm = T),
-            # foraging morphology
-            `tarsus length` = weighted.mean(tar.len, rel_mu, na.rm = T),
-            `wing length` = weighted.mean(win.len, rel_mu, na.rm = T),
-            # dietary morphology
-            `beak length` = weighted.mean(bea.len, rel_mu, na.rm = T), 
-            `beak width` = weighted.mean(bea.wid, rel_mu, na.rm = T),
-            `beak depth` = weighted.mean(bea.dep, rel_mu, na.rm = T), 
-            # ecological niche
-            `body length` = weighted.mean(bod.len, rel_mu, na.rm = T), #highly correlated
-            `habitat breadth` = weighted.mean(hab.bre, rel_mu, na.rm = T),
-            `range size` = weighted.mean(ran.siz, rel_mu, na.rm = T),
-              # converting 0-1 index to 1-2 (log10 transformation)
-            `endemic insularity` = (weighted.mean(end.ins, rel_mu, na.rm = T)+1),
-            # foraging niche 
-              # converting 0-1 index to 1-2 (log10 transformation)
-            pred = (weighted.mean(predatory, rel_mu, na.rm = T)+1),
-            # converting 0-1 index to 1-2 (log10 transformation)
-            `diet generalist` = (weighted.mean(generalist, rel_mu, na.rm = T)+1),
-          # behavioral / reproductive niche
-            verticality = weighted.mean(vertical, rel_mu, na.rm = T),
-            `nest structure breadth` = weighted.mean(nes.str.bre, rel_mu, na.rm = T),
-            `nest location breadth` = weighted.mean(nes.loc.bre, rel_mu, na.rm = T),
+            `tarsus length` = weighted.mean(`Tarsus length`, rel_mu, na.rm = T),
+            `wing length` = weighted.mean(`Wing length`, rel_mu, na.rm = T),
+            `beak length nar` = weighted.mean(`Beak length (nares)`, rel_mu, na.rm = T), 
+          `beak length cul` = weighted.mean(`Beak length (culmen)`, rel_mu, na.rm = T), 
+            `beak width` = weighted.mean(`Beak width`, rel_mu, na.rm = T),
+            `beak depth` = weighted.mean(`Beak depth`, rel_mu, na.rm = T), 
+            `diet breadth` = weighted.mean(`Diet breadth`, rel_mu, na.rm = T), 
+            `habitat breadth` = weighted.mean(`Habitat breadth`, rel_mu, na.rm = T),
+            `eco speci index` = weighted.mean(`EcoloSpeciIndex`, rel_mu, na.rm = T),
+            `verticality` = weighted.mean(`Verticality index`, rel_mu, na.rm = T),
+            `elevation range` = weighted.mean(`Elevational range`, rel_mu, na.rm = T),
+            `clutch size` = weighted.mean(`Clutch size`, rel_mu, na.rm = T),
+            `n broods` = weighted.mean(`Number of broods`, rel_mu, na.rm = T),
+            `nest locat breadth` = weighted.mean(`Nest location breadth`, rel_mu, na.rm = T),
+            `nest type breadth` = weighted.mean(`Nest type breadth`, rel_mu, na.rm = T),
           # CWV  
-            # dispersal morphology 
-            `bmass cwv` = cwv(bod.mas, rel_mu, `body mass`), 
-            `hwi cwv` = cwv(hwi, rel_mu, `hand wing index`),
-            # foraging morphology
-            `tarsus cwv` = cwv(tar.len, rel_mu, `tarsus length`),
-            `wing cwv` = cwv(win.len, rel_mu, `wing length`),
-            # dietary morphology
-            `beak l cwv` = cwv(bea.len, rel_mu, `beak length`), 
-            `beak w cwv` = cwv(bea.wid, rel_mu, `beak width`),
-            `beak d cwv` = cwv(bea.dep, rel_mu, `beak depth`), 
-          # ecological niche
-          `body l cwv` = cwv(bod.len, rel_mu, `body length`),
-          `habitat b cwv` = cwv(hab.bre, rel_mu, `habitat breadth`),
-          `range cwv` = cwv(ran.siz, rel_mu, `range size`),
-          # converting 0-1 index to 1-2 (log10 transformation)
-          `insularity cwv` = (cwv(end.ins, rel_mu, `endemic insularity`)),
-          # foraging niche 
-          # converting 0-1 index to 1-2 (log10 transformation)
-          `predatory cwv` = (cwv(predatory, rel_mu, pred)),
-          # converting 0-1 index to 1-2 (log10 transformation)
-          `generalist cwv` = (cwv(generalist, rel_mu, `diet generalist`)),
-          # behavioral / reproductive niche
-          `verticality cwv` = cwv(vertical, rel_mu, verticality),
-          `nest str cwv` = cwv(nes.str.bre, rel_mu, `nest structure breadth`),
-          `nest loc cwv` = cwv(nes.loc.bre, rel_mu, `nest location breadth`),
-            ) # 17 spp is the 1st quartile, but this reduces a lot 
+            `mass cwv` = cwv(`log (Body mass)`, rel_mu, `body mass`),
+            `hwi cwv` = cwv(`Hand Wing Index`, rel_mu, `hand wing index`),
+            `tarsus l cwv` = cwv(`Tarsus length`, rel_mu, `tarsus length`),
+            `wing l cwv` = cwv(`Wing length`, rel_mu, `wing length`),
+            `beak l-n cwv ` = cwv(`Beak length (nares)`, rel_mu, `beak length nar`), 
+          `beak l-c cwv` = cwv(`Beak length (culmen)`, rel_mu, `beak length cul`), 
+            `beak w cwv` = cwv(`Beak width`, rel_mu, `beak width`),
+             `beak d cwv` = cwv(`Beak depth`, rel_mu, `beak depth`), 
+            `diet b cwv` = cwv(`Diet breadth`, rel_mu, `diet breadth`), 
+            `habitat b cwv` = cwv(`Habitat breadth`, rel_mu, `habitat breadth`),
+            `esi cwv` = cwv(`EcoloSpeciIndex`, rel_mu, `eco speci index`),
+            `verticality cwv` = cwv(`Verticality index`, rel_mu, `verticality`),
+            `elevation r cwv` = cwv(`Elevational range`, rel_mu, `elevation range`),
+            `clutch s cwv` = cwv(`Clutch size`, rel_mu, `clutch size`),
+            `n broods cwv` = cwv(`Number of broods`, rel_mu, `n broods`),
+            `nest l b cwv` = cwv(`Nest location breadth`, rel_mu, `nest locat breadth`),
+            `nest t b cwv` = cwv(`Nest type breadth`, rel_mu, `nest type breadth`)
+            ) |>
+  as.data.frame()
+```
+
+Group for figure
+
+```{r}
+islands_cwm_mu <- islands_cwm_mu_summary |>
+  mutate(subregion = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Caribbean - Continental islands", "Continental islands",
+                     ifelse(subregion == "Caribbean - Greater Antilles", "Greater Antilles",
+                     ifelse(subregion == "Caribbean - Kalinago", "Lesser Antilles (Kalinago)",
+                     ifelse(subregion == "Caribbean - Lucayan", "Bahamas (Lucayan)",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Andaman & Nicobar", "Andaman & Nicobar",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Continental islands", "Continental islands",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Philippines", "Philippines",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Sunda islands", "Sunda islands",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Wallacea", "Wallacea",
+                     ifelse(subregion == "Papuan-Melanesian - Bismarcks", "Bismarcks",
+                     ifelse(subregion == "Papuan-Melanesian - Papua", "Papua",
+                     ifelse(subregion == "Papuan-Melanesian - Solomons", "Solomons",
+                     ifelse(subregion == "Papuan-Melanesian - Vanuatu", "Vanuatu",
+                     subregion)))))))))))))),
+         region = ifelse(Meta.Archipelago == "Indo.Pacific", "Indo Pacific",
+                                   "Caribbean"),
+         fig_group = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Continental islands", "Islands",
+                     ifelse(subregion == "Greater Antilles", "Islands",
+                     ifelse(subregion == "Lesser Antilles (Kalinago)", "Islands",
+                     ifelse(subregion == "Bahamas (Lucayan)", "Islands",
+                     ifelse(subregion == "Andaman & Nicobar", "Islands",
+                     ifelse(subregion == "Philippines", "Islands",
+                     ifelse(subregion == "Sunda islands", "Islands",
+                     ifelse(subregion == "Wallacea", "Islands",
+                     ifelse(subregion == "Bismarcks", "Islands",
+                     ifelse(subregion == "Papua", "Islands",
+                     ifelse(subregion == "Solomons", "Islands",
+                     ifelse(subregion == "Vanuatu", "Islands",
+                     subregion))))))))))))))
+
+names(islands_cwm_mu)
+
+corrplot::corrplot(round(cor(scale(log10(islands_cwm_mu[,c(6:22)]))),2), 
+         type="upper", order="hclust", 
+         tl.col="black", tl.srt=45)
+
+corrplot::corrplot(round(cor(scale((islands_cwm_mu[,c(23:39)]))),2), 
+         type="upper", order="hclust", 
+         tl.col="black", tl.srt=45)
+
+# Save data for PCAs figure!! ####
+saveRDS(islands_cwm_mu, "results_funbiog/Islands_CWM_mu.RDS")
+```
+
+### PCA of the CWM and CWV
+
+```{r}
+islands_cwm_mu <- readRDS("results_funbiog/Islands_CWM_mu.RDS")
+
+caribbean_cwm <- islands_cwm_mu |>
+  filter(Meta.Archipelago %in% "Caribbean") |>
+  # bring back the mean value of longitude for each cell
+  left_join(spp_cell_df |> 
+              dplyr::select(cell,longitude, latitude) |> 
+              group_by(cell) |> 
+              summarize(longitude = mean(longitude),
+                        latitude = mean(latitude))) |>
+  filter(latitude < 24 | longitude > -79.5, 
+         spp_richness >= 15) # 1st Q of species richness in the Caribbean
+
+names(caribbean_cwm)
+
+caribbean_cwm[,c(3, 6:22)] |>
+  pivot_longer(cols = !c(subregion), names_to = "Trait",values_to = "CWM") |>
+  ggplot(aes(x = scale(log10(CWM)))) + geom_histogram() +facet_wrap(~Trait, scales = "free")+theme_classic()
+
+funspaceDim(scale(log10(caribbean_cwm[,c(6:22)]))) # 4 dimensions
+
+carib.pca.cwm <- prcomp(scale(log10(caribbean_cwm[,c(6:22)])))
+carib.pca.cwm.values <- data.frame(cell = caribbean_cwm$cell,
+                               Meta_Archipelago = caribbean_cwm$Meta.Archipelago,
+                               region = caribbean_cwm$region,
+                               subregion = caribbean_cwm$subregion,
+                               fig_group = caribbean_cwm$fig_group,
+                               spp_richness = caribbean_cwm$spp_richness,
+                               pred_richness = caribbean_cwm$pred_richness,
+                               carib.pca.cwm$x)
+
+carib.pca.cwm.loadings <- data.frame(Variables = rownames(carib.pca.cwm$rotation), 
+                                     carib.pca.cwm$rotation)
+
+aload.car <- abs(carib.pca.cwm$rotation)
+sweep(aload.car, 2, colSums(aload.car), "/")
+
+table(carib.pca.cwm.values$subregion)
+
+carib.pca.cwm.values$subregion <- factor(carib.pca.cwm.values$subregion,
+                                          levels = c("Mainland",
+                                                     "Continental islands",
+                                                     "Lesser Antilles (Kalinago)",
+                                                     "Greater Antilles",
+                                                     "Bahamas (Lucayan)"))
+
+summary(carib.pca.cwm)
+
+saveRDS(carib.pca.cwm.values, "results_funbiog/carib.pca.cwm.values.RDS")
+saveRDS(carib.pca.cwm.loadings, "results_funbiog/carib.pca.cwm.loadings.RDS")
+```
+
+```{r}
+library(plotly)
+
+# Define your palette
+subregion_colors <- c(
+  "Mainland"            = "#A1A1A1",
+  "Continental islands" = "#663171",
+  "Lesser Antilles (Kalinago)"     = "#aadce0",
+  "Greater Antilles"    = "#376795",
+  "Bahamas (Lucayan)"             = "#ef8a47"
+)
+
+# Scale richness to a reasonable marker size range
+size_scale <- scales::rescale(carib.pca.cwm.values$spp_richness, to = c(4, 18))
+
+# Base scatter plot with relative size
+p <- plot_ly(
+  data = carib.pca.cwm.values,
+  x = ~PC1, y = ~PC2, z = ~PC3,
+  type = "scatter3d", mode = "markers",
+  color = ~subregion,
+  colors = subregion_colors,
+  marker = list(
+    size = size_scale,   # relative size by richness
+    opacity = 0.5
+  ),
+  text = ~paste("Richness:", spp_richness) # hover info
+)
+
+# Add loading vectors for top contributors
+carib.pca.cwm.loadings$contrib <- rowSums(carib.pca.cwm.loadings[, c("PC1","PC2","PC3")]^2)
+top_vars <- carib.pca.cwm.loadings[order(-carib.pca.cwm.loadings$contrib), ][1:10, ]
+
+for (i in seq_len(nrow(top_vars))) {
+  v <- top_vars[i, ]
+  
+  # Arrow (line only)
+  p <- add_trace(
+    p,
+    x = c(0, v$PC1 * 10),
+    y = c(0, v$PC2 * 10),
+    z = c(0, v$PC3 * 10),
+    type = "scatter3d", mode = "lines",
+    line = list(color = "black", width = 4),
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+  
+  # Label (only at arrow tip)
+  p <- add_trace(
+    p,
+    x = v$PC1 * 10,
+    y = v$PC2 * 10,
+    z = v$PC3 * 10,
+    type = "scatter3d", mode = "text",
+    text = v$Variables,
+    textposition = "top middle",
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+}
+
+p
+```
+
+```{r}
+table(islands_cwm_mu$Meta.Archipelago)
+
+orinma_cwm <- islands_cwm_mu |> 
+  filter(Meta.Archipelago == "Indo.Pacific") |>
+  # bring back the mean value of longitude for each cell
+  left_join(spp_cell_df |> 
+              dplyr::select(cell,longitude, latitude) |> 
+              group_by(cell) |> 
+              summarize(longitude = mean(longitude),
+                        latitude = mean(latitude))) |>
+  filter(spp_richness >= 7, # 1st Q of Species richness 
+         subregion != "Vanuatu", # 9 cells
+         subregion != "Solomons", # 2 cells
+         subregion != "Bismarcks", # 2 cells
+         # removing Australia (lose of ~6 Papua)
+         latitude > -10.7)
+
+names(orinma_cwm)
+
+funspaceDim(scale(log10(orinma_cwm[,c(6:22)]))) # 3 dimensions
+
+orinma.pca.cwm <- prcomp(scale(log10(orinma_cwm[,c(6:22)])))
+
+orinma.pca.cwm.values <- data.frame(cell = orinma_cwm$cell,
+                                Meta_Archipelago = orinma_cwm$Meta.Archipelago,
+                                region = orinma_cwm$region,
+                                subregion = orinma_cwm$subregion,
+                                fig_group = orinma_cwm$fig_group,
+                                spp_richness = orinma_cwm$spp_richness,
+                                pred_richness = orinma_cwm$pred_richness,
+                                orinma.pca.cwm$x)
+
+orinma.pca.cwm.loadings <- data.frame(Variables = rownames(orinma.pca.cwm$rotation), orinma.pca.cwm$rotation)
+
+aload <- abs(orinma.pca.cwm$rotation)
+sweep(aload, 2, colSums(aload), "/")
+
+table(orinma.pca.cwm.values$subregion)
+
+orinma.pca.cwm.values$subregion <- factor(orinma.pca.cwm.values$subregion,
+                                          levels = c("Mainland",
+                                                     "Continental islands",
+                                                     "Andaman & Nicobar",
+                                                     "Sunda islands",
+                                                     "Philippines",
+                                                     "Wallacea",
+                                                     "Papua"),
+                                          labels = c("Mainland",
+                                                     "Continental islands",
+                                                     "Andaman & Nicobar",
+                                                     "Sunda islands",
+                                                     "Philippines",
+                                                     "Wallacea",
+                                                     "New Guinea"))
+
+summary(orinma.pca.cwm)
+
+saveRDS(orinma.pca.cwm.values, "results_funbiog/orinma.pca.cwm.values.RDS")
+saveRDS(orinma.pca.cwm.loadings, "results_funbiog/orinma.pca.cwm.loadings.RDS")
+```
+
+```{r}
+library(plotly)
+
+# Define your palette
+subregion_colorsI <- c(
+  "Mainland"            = "#A1A1A1",
+  "Continental islands" = "#663171",
+  "Andaman & Nicobar" = "#BA3841",
+  "Sunda islands" = "#DF5C2D",
+  "Philippines" = "#E6824F",
+  "Wallacea" = "#B7917F",
+  "New Guinea" = "#0C7156"
+)
+
+# Scale richness to a reasonable marker size range
+size_scaleI <- scales::rescale(orinma.pca.cwm.values$spp_richness, to = c(4, 18))
+
+# Base scatter plot with relative size
+pI <- plot_ly(
+  data = orinma.pca.cwm.values,
+  x = ~PC1, y = ~PC2, z = ~PC3,
+  type = "scatter3d", mode = "markers",
+  color = ~subregion,
+  colors = subregion_colorsI,
+  marker = list(
+    size = size_scale,   # relative size by richness
+    opacity = 0.6
+  ),
+  text = ~paste("Richness:", spp_richness) # hover info
+)
+
+# Add loading vectors for top contributors
+orinma.pca.cwm.loadings$contrib <- rowSums(orinma.pca.cwm.loadings[, c("PC1","PC2","PC3")]^2)
+top_varsI <- orinma.pca.cwm.loadings[order(-orinma.pca.cwm.loadings$contrib), ][1:10, ]
+
+for (i in seq_len(nrow(top_varsI))) {
+  v <- top_varsI[i, ]
+  
+  # Arrow (line only)
+  pI <- add_trace(
+    pI,
+    x = c(0, v$PC1 * 10),
+    y = c(0, v$PC2 * 10),
+    z = c(0, v$PC3 * 10),
+    type = "scatter3d", mode = "lines",
+    line = list(color = "black", width = 4),
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+  
+  # Label (only at arrow tip)
+  pI <- add_trace(
+    pI,
+    x = v$PC1 * 10,
+    y = v$PC2 * 10,
+    z = v$PC3 * 10,
+    type = "scatter3d", mode = "text",
+    text = v$Variables,
+    textposition = "top middle",
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+}
+
+pI
+```
+
+## Analyses of Expansion or Shift
+
+Consider that species richness, $S_m$, is partially represented by potential predators ($P_m$) and potential competitors ($C_m$):
+$$
+S_m = C_m + P_m
+$$
+
+Therefore, we can compare the marginal effect of these two components of species richness in the context of competition ($\sim C_m$) and predation ($\sim P_m$) release.
+
+Bring the pca values. 
+
+```{r}
+carib.pca.cwm.values <- readRDS("results_funbiog/carib.pca.cwm.values.RDS")
+carib.pca.cwm.loadings <- readRDS("results_funbiog/carib.pca.cwm.loadings.RDS")
+orinma.pca.cwm.values <- readRDS("results_funbiog/orinma.pca.cwm.values.RDS")
+orinma.pca.cwm.loadings <- readRDS("results_funbiog/orinma.pca.cwm.loadings.RDS")
+```
+
+Euclidean distance of ordination for CWM will provide "expansion" or "retraction" across regions (and effect of non-predator richness as proxy for competition and predator richness as proxy for predation).
+
+### Caribbean
+
+```{r}
+names(carib.pca.cwm.values)
+
+carib.bd <- betadisper(dist(cbind(carib.pca.cwm.values[,8:11])), #PC1:PC4
+                       carib.pca.cwm.values$subregion, type = "centroid")
+TukeyHSD(carib.bd) # no difference in distance
+
+carib.disp_df <- data.frame(distances = carib.bd$distances,
+                            S_m = carib.pca.cwm.values$spp_richness,
+                             C_m = (carib.pca.cwm.values$spp_richness - carib.pca.cwm.values$pred_richness),
+                             P_m = carib.pca.cwm.values$pred_richness,
+                             subregion = carib.pca.cwm.values$subregion)
+
+# compare models
+carib.mod.Null <- glm(distances ~ 1, 
+                      data = carib.disp_df)
+carib.mod.Subr <- glm(distances ~ subregion, 
+                    data = carib.disp_df)
+carib.mod.Sm <- glm(distances ~ C_m, 
+                    data = carib.disp_df)
+carib.mod.Pm <- glm(distances ~ P_m, 
+                    data = carib.disp_df)
+carib.mod.Sm.Pm <- glm(distances ~ C_m + P_m, 
+                       data = carib.disp_df)
+carib.mod.Sm.Subr.Pm <- glm(distances ~ C_m*subregion + P_m, 
+                         data = carib.disp_df)
+carib.mod.Pm.Subr.Sm <- glm(distances ~ P_m*subregion + C_m, 
+                    data = carib.disp_df)
+AICcmodavg::aictab(cand.set = list(carib.mod.Null, 
+                                   carib.mod.Subr,
+                                   carib.mod.Sm, 
+                                   carib.mod.Pm,
+                                   carib.mod.Sm.Pm,
+                                   carib.mod.Sm.Subr.Pm,
+                                   carib.mod.Pm.Subr.Sm),
+                   modnames = c("Null", 
+                                "Subregion",
+                                "Cm","Pm",
+                                "Cm_Pm",
+                                "Cm_Subregion_Pm","Pm_Subregion_Cm"))
+
+summary(carib.mod.Sm.Subr.Pm)
+
+carib.mod.Sm.Subr.eff <- emtrends(carib.mod.Sm.Subr.Pm, ~ subregion, var = "C_m") |>
+  as.data.frame()
+
+carib.mod.Sm.Subr.eff |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_pointrange(aes(y = C_m.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("Mainland"            = "#A1A1A1",
+  "Continental islands" = "#663171",
+  "Lesser Antilles (Kalinago)"     = "#aadce0",
+  "Greater Antilles"    = "#376795",
+  "Bahamas (Lucayan)"             = "#ef8a47")) +
+  labs(y = "EMMs of `competitors` effect on Euclidean distance", 
+       x = "Subregion", title = "Caribbean") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+ggplot(carib.disp_df, 
+       aes(x = C_m, 
+           y = distances, 
+           color = subregion, 
+           fill = subregion)) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.2, lwd = 1) +
+#  scale_x_log10() +
+  scale_color_manual(values = c("Mainland" = "#A1A1A1",
+                                  "Continental islands" = "#663171",
+                                  "Lesser Antilles (Kalinago)" = "#aadce0",
+                                  "Greater Antilles" = "#376795",
+                                  "Bahamas (Lucayan)" = "#ef8a47")) +
+  scale_fill_manual(values = c("Mainland" = "#A1A1A1",
+                                  "Continental islands" = "#663171",
+                                  "Lesser Antilles (Kalinago)" = "#aadce0",
+                                  "Greater Antilles" = "#376795",
+                                  "Bahamas (Lucayan)" = "#ef8a47")) +
+  labs(x = "Species richness",
+       y = "Euclidean distance from centroid", 
+       color = "Subregion", 
+       title = "Caribbean") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  coord_cartesian(ylim = c(0.5,13))
+```
+
+```{r eval = FALSE}
+## Pairwise adonis - PERMANOVA Caribbean ####
+Carib.PERMA <- pairwise.adonis2(carib.pca.cwm.values[,8:10] ~ subregion + spp_richness + pred_richness, 
+                                data = carib.pca.cwm.values, 
+                                by = "margin", # understanding the independent contribution of each variable (marginal effect)
+                                method = "euclidean", nperm = 999)
+Carib.PERMA # Oceanic archipelagos are way different!
+
+Carib_pairwise_result <- map_dfr(
+  Carib.PERMA,
+  ~ .x %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Term") %>%
+    as_tibble(),
+  .id = "Comparison"
+) |>
+  as.data.frame() |>
+  dplyr::select(c(Comparison, Term, R2, `F`, `Pr(>F)`)) |>
+  filter(Comparison != "parent_call",
+         Term != "Residual",
+         Term != "Total") 
+
+print(xtable::xtable(Carib_pairwise_result, digits = 3), include.rownames = FALSE)
+
+saveRDS(Carib.PERMA, "results_funbiog/Carib.PERMA.RDS")
+saveRDS(Carib_pairwise_result, "results_funbiog/Carib_pairwise_result.RDS")
+```
+
+```{r}
+carib.pca.cwm.values$C_m <- carib.pca.cwm.values$spp_richness - carib.pca.cwm.values$pred_richness
+
+carib.pca.cwm.values$P_m <- carib.pca.cwm.values$pred_richness
+
+# compare models
+Carib.PC1.mod.Null <- glm(PC1 ~ 1, 
+                          data = carib.pca.cwm.values)
+Carib.PC1.mod.Subr <- glm(PC1 ~ subregion, 
+                       data = carib.pca.cwm.values)
+Carib.PC1.mod.Sm <- glm(PC1 ~ C_m, 
+                     data = carib.pca.cwm.values)
+Carib.PC1.mod.Pm <- glm(PC1 ~ P_m, 
+                     data = carib.pca.cwm.values)
+Carib.PC1.mod.Sm.Subr <- glm(PC1 ~ C_m*subregion + P_m, 
+                          data = carib.pca.cwm.values)
+Carib.PC1.mod.Pm.Subr <- glm(PC1 ~ P_m*subregion + C_m, 
+                          data = carib.pca.cwm.values)
+
+Carib.PC2.mod.Null <- glm(PC2 ~ 1, 
+                          data = carib.pca.cwm.values)
+Carib.PC2.mod.Subr <- glm(PC2 ~ subregion, 
+                          data = carib.pca.cwm.values)
+Carib.PC2.mod.Sm <- glm(PC2 ~ C_m, 
+                        data = carib.pca.cwm.values)
+Carib.PC2.mod.Pm <- glm(PC2 ~ P_m, 
+                        data = carib.pca.cwm.values)
+Carib.PC2.mod.Sm.Subr <- glm(PC2 ~ C_m*subregion + P_m, 
+                             data = carib.pca.cwm.values)
+Carib.PC2.mod.Pm.Subr <- glm(PC2 ~ P_m*subregion + C_m, 
+                             data = carib.pca.cwm.values)
+
+Carib.PC3.mod.Null <- glm(PC3 ~ 1, 
+                          data = carib.pca.cwm.values)
+Carib.PC3.mod.Subr <- glm(PC3 ~ subregion, 
+                          data = carib.pca.cwm.values)
+Carib.PC3.mod.Sm <- glm(PC3 ~ spp_richness, 
+                        data = carib.pca.cwm.values)
+Carib.PC3.mod.Pm <- glm(PC3 ~ pred_richness, 
+                        data = carib.pca.cwm.values)
+Carib.PC3.mod.Sm.Subr <- glm(PC3 ~ spp_richness*subregion + pred_richness, 
+                             data = carib.pca.cwm.values)
+Carib.PC3.mod.Pm.Subr <- glm(PC3 ~ pred_richness*subregion + spp_richness, 
+                             data = carib.pca.cwm.values)
+
+AICcmodavg::aictab(cand.set = list(Carib.PC1.mod.Null,
+                                   Carib.PC1.mod.Subr,
+                                   Carib.PC1.mod.Sm, 
+                                   Carib.PC1.mod.Pm,
+                                   Carib.PC1.mod.Sm.Subr,
+                                   Carib.PC1.mod.Pm.Subr),
+                   modnames = c("Null", "Subregion.PC1","Sm.PC1","Pm.PC1","Sm_Subregion.PC1","Pm_Subregion.PC1"))
+
+AICcmodavg::aictab(cand.set = list(Carib.PC2.mod.Null, 
+                                   Carib.PC2.mod.Subr,
+                                   Carib.PC2.mod.Sm, 
+                                   Carib.PC2.mod.Pm,
+                                   Carib.PC2.mod.Sm.Subr,
+                                   Carib.PC2.mod.Pm.Subr),
+                   modnames = c("Null", "Subregion.PC2","Sm.PC2","Pm.PC2","Sm_Subregion.PC2","Pm_Subregion.PC2"))
+
+AICcmodavg::aictab(cand.set = list(Carib.PC3.mod.Null, 
+                                   Carib.PC3.mod.Subr,
+                                   Carib.PC3.mod.Sm, 
+                                   Carib.PC3.mod.Pm,
+                                   Carib.PC3.mod.Sm.Subr,
+                                   Carib.PC3.mod.Pm.Subr),
+                   modnames = c("Null", "Subregion.PC3","Sm.PC3","Pm.PC3","Sm_Subregion.PC3","Pm_Subregion.PC3"))
+
+summary(Carib.PC1.mod.Sm.Subr)
+summary(Carib.PC2.mod.Sm.Subr)
+summary(Carib.PC2.mod.Pm.Subr)
+summary(Carib.PC3.mod.Sm.Subr)
+
+
+emtrends(Carib.PC1.mod.Sm.Subr, ~ subregion, var = "C_m") |>
+  as.data.frame() |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = 0.02196600, lty = 2, color = "#A1A1A1") +
+  geom_hline(yintercept = 0.01744766, lty = 3, color = "#A1A1A1") +
+  geom_hline(yintercept = 0.02648433, lty = 3, color = "#A1A1A1") +
+  geom_pointrange(aes(y = C_m.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("Mainland" = "#A1A1A1",
+                                  "Continental islands" = "#663171",
+                                  "Lesser Antilles (Kalinago)" = "#aadce0",
+                                  "Greater Antilles" = "#376795",
+                                  "Bahamas (Lucayan)" = "#ef8a47")) +
+  labs(x = "Subregion",
+       y = "EMMs of `competitors` effect on PC1 (47.92%)", # pc2 (14.16%) 
+       color = "Subregion", 
+       title = "Caribbean") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+emtrends(Carib.PC2.mod.Sm.Subr, ~ subregion, var = "C_m") |>
+  as.data.frame() |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = 0.017694081, lty = 2, color = "#A1A1A1") +
+  geom_hline(yintercept = 0.015460224, lty = 3, color = "#A1A1A1") +
+  geom_hline(yintercept = 0.01992794, lty = 3, color = "#A1A1A1") +
+  geom_pointrange(aes(y = C_m.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("Mainland" = "#A1A1A1",
+                                  "Continental islands" = "#663171",
+                                  "Lesser Antilles (Kalinago)" = "#aadce0",
+                                  "Greater Antilles" = "#376795",
+                                  "Bahamas (Lucayan)" = "#ef8a47")) +
+  labs(x = "Subregion",
+       y = "EMMs of `competitors` effect on PC2 (14.16%)", 
+       color = "Subregion", 
+       title = "Caribbean") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+```
+
+```{r}
+## Figures mean per region PC1-PC3 Caribbean ####
+names(carib.pca.cwm.values)
+
+# Define new labels
+PC_labels_Carib <- c("PC1" = " PC1\n(47.92%)",
+                     "PC2" = "PC2\n(14.16%)",
+                     "PC3" = "PC3\n(10.54%)")
+
+
+Shift_Region_Carib <- carib.pca.cwm.values |>
+  dplyr::select(cell, Meta_Archipelago, region, subregion, fig_group, 
+                spp_richness, pred_richness, PC1, PC2) |>
+  pivot_longer(cols = c(PC1, PC2)) |>
+  mutate(linetype = case_when(
+    # PC1 rules
+    name == "PC1" & subregion %in% c("Mainland", "Lesser Antilles (Kalinago)", "Continental islands") ~ "solid",
+    name == "PC1" & subregion %in% c("Bahamas (Lucayan)", "Greater Antilles") ~ "dashed",
+    
+    # PC2 rules
+    name == "PC2" & subregion %in% c("Mainland", "Continental islands", "Greater Antilles") ~ "solid",
+    name == "PC2" & subregion %in% c( "Lesser Antilles (Kalinago)", "Bahamas (Lucayan)") ~ "dashed",
+    
+    # # PC3 rules
+    # name == "PC3" & subregion == "Mainland" ~ "solid",
+    # name == "PC3" & subregion %in% c("Continental islands", "Bahamas (Lucayan)", "Lesser Antilles (Kalinago)", "Greater Antilles") ~ "dashed",
+    
+    TRUE ~ "solid"  # fallback
+  )) |>
+  ggplot(aes(x = spp_richness,
+             y = value,
+             fill = subregion,
+             color = subregion)) +
+  facet_wrap(~name, scales = "free_y", ncol = 1, 
+             labeller = as_labeller(PC_labels_Carib)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(aes(linetype = linetype), method = "lm", se = TRUE, alpha = 0.2, lwd = 1) +
+  scale_linetype_identity() +
+  scale_fill_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  scale_color_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  labs(x = "Species richness",
+       y = "Score",
+       title = "Shift – Caribbean") +
+  theme_classic() +
+  theme(legend.position = "left",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"),
+        strip.background = element_blank())
+
+Shift_Region_Carib
+```
+
+### Indo-Pacific
+
+```{r}
+orinma.bd <- betadisper(dist(cbind(orinma.pca.cwm.values[,8:10])), 
+                       orinma.pca.cwm.values$subregion, type = "centroid")
+TukeyHSD(orinma.bd)
+
+orinma.disp_df <- data.frame(distances = orinma.bd$distances,
+                      C_m = (orinma.pca.cwm.values$spp_richness - orinma.pca.cwm.values$pred_richness),
+                      P_m = orinma.pca.cwm.values$pred_richness,
+                      subregion = orinma.pca.cwm.values$subregion)
+
+# compare models
+orinma.mod.Null <- glm(distances ~ 1, 
+                       data = orinma.disp_df)
+orinma.mod.Subr <- glm(distances ~ subregion, 
+                      data = orinma.disp_df)
+orinma.mod.Sm <- glm(distances ~ C_m, 
+                    data = orinma.disp_df)
+orinma.mod.Pm <- glm(distances ~ P_m, 
+                    data = orinma.disp_df)
+orinma.mod.Sm.Subr <- glm(distances ~ C_m*subregion + P_m, 
+                         data = orinma.disp_df)
+orinma.mod.Pm.Subr <- glm(distances ~ P_m*subregion + C_m, 
+                         data = orinma.disp_df)
+AICcmodavg::aictab(cand.set = list(orinma.mod.Null, 
+                                   orinma.mod.Subr,
+                                   orinma.mod.Sm, 
+                                   orinma.mod.Pm,
+                                   orinma.mod.Sm.Subr,
+                                   orinma.mod.Pm.Subr),
+                   modnames = c("Null", "Subregion","Sm","Pm","Sm_Subregion","Pm_Subregion"))
+
+summary(orinma.mod.Sm.Subr)
+summary(orinma.mod.Pm.Subr)
+
+# Extract effects of each variable
+library(emmeans)
+orinma.mod.Sm.Subr.eff <- emtrends(orinma.mod.Sm.Subr, ~ subregion, var = "C_m") |>
+  as.data.frame()
+
+orinma.mod.Sm.Subr.eff |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_pointrange(aes(y = C_m.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(y = "EMMs of `competitors` effect on Euclidean distance", 
+       x = "Subregion", title = "Indo-Pacific") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+ggplot(orinma.disp_df, 
+       aes(x = C_m, 
+           y = distances, 
+           color = subregion, 
+           fill = subregion)) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.2, lwd = 1) +
+#  scale_x_log10() +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(x = "Species richness",
+       y = "Euclidean distance from centroid", 
+       color = "Subregion", 
+       title = "Indo-Pacific") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  coord_cartesian(ylim = c(0.1,12))
+
+# predators, similar AIC
+orinma.mod.Pm.Subr.eff <- emtrends(orinma.mod.Pm.Subr, ~ subregion, var = "P_m") |>
+  as.data.frame()
+
+orinma.mod.Pm.Subr.eff |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_pointrange(aes(y = P_m.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(y = "EMMs of `predators` effect on Euclidean distance", 
+       x = "Subregion", title = "Indo-Pacific") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+ggplot(orinma.disp_df, 
+       aes(x = pred_richness, 
+           y = distances, 
+           color = subregion, 
+           fill = subregion)) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", alpha = 0.2, lwd = 1) +
+#  scale_x_log10() +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(x = "Predator species richness",
+       y = "Euclidean distance from centroid", 
+       color = "Subregion", 
+       title = "Indo-Pacific") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  coord_cartesian(ylim = c(0.1,12))
+```
+
+```{r}
+orinma.PERMA <- pairwise.adonis2(orinma.pca.cwm.values[,8:10] ~ subregion + spp_richness + pred_richness, 
+                                 data = orinma.pca.cwm.values, 
+                                 by = "margin", # understanding the independent contribution of each variable (marginal effect)
+                                 method = "euclidean", nperm = 999)
+orinma.PERMA 
+
+# using broom
+orinma_pairwise_result <- map_dfr(
+  orinma.PERMA,
+  ~ .x %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Term") %>%
+    as_tibble(),
+  .id = "Comparison"
+) |>
+  as.data.frame() |>
+  dplyr::select(c(Comparison, Term, R2, `F`, `Pr(>F)`)) |>
+  filter(Comparison != "parent_call",
+         Term != "Residual",
+         Term != "Total") |>
+  mutate(R2 = round(R2, 3),
+         F = round(F, 3))
+
+print(xtable::xtable(orinma_pairwise_result, digits = 3), include.rownames = FALSE)
+
+saveRDS(orinma_pairwise_result, "results_funbiog/orinma_pairwise_result.RDS")
+saveRDS(orinma.PERMA, "results_funbiog/orinma.PERMA.rds")
+```
+
+```{r}
+orinma.PERMA <- readRDS("results_funbiog/orinma.PERMA.rds")
+
+# compare models
+orinma.PC1.mod.Subr <- glm(PC1 ~ subregion, 
+                          data = orinma.pca.cwm.values)
+orinma.PC1.mod.Sm <- glm(PC1 ~ spp_richness, 
+                        data = orinma.pca.cwm.values)
+orinma.PC1.mod.Pm <- glm(PC1 ~ pred_richness, 
+                        data = orinma.pca.cwm.values)
+orinma.PC1.mod.Sm.Subr <- glm(PC1 ~ spp_richness*subregion + pred_richness, 
+                             data = orinma.pca.cwm.values)
+orinma.PC1.mod.Pm.Subr <- glm(PC1 ~ pred_richness*subregion + spp_richness, 
+                             data = orinma.pca.cwm.values)
+
+orinma.PC2.mod.Subr <- glm(PC2 ~ subregion, 
+                          data = orinma.pca.cwm.values)
+orinma.PC2.mod.Sm <- glm(PC2 ~ spp_richness, 
+                        data = orinma.pca.cwm.values)
+orinma.PC2.mod.Pm <- glm(PC2 ~ pred_richness, 
+                        data = orinma.pca.cwm.values)
+orinma.PC2.mod.Sm.Subr <- glm(PC2 ~ spp_richness*subregion + pred_richness, 
+                             data = orinma.pca.cwm.values)
+orinma.PC2.mod.Pm.Subr <- glm(PC2 ~ pred_richness*subregion + spp_richness, 
+                             data = orinma.pca.cwm.values)
+
+orinma.PC3.mod.Subr <- glm(PC3 ~ subregion, 
+                          data = orinma.pca.cwm.values)
+orinma.PC3.mod.Sm <- glm(PC3 ~ spp_richness, 
+                        data = orinma.pca.cwm.values)
+orinma.PC3.mod.Pm <- glm(PC3 ~ pred_richness, 
+                        data = orinma.pca.cwm.values)
+orinma.PC3.mod.Sm.Subr <- glm(PC3 ~ spp_richness*subregion + pred_richness, 
+                             data = orinma.pca.cwm.values)
+orinma.PC3.mod.Pm.Subr <- glm(PC3 ~ pred_richness*subregion + spp_richness, 
+                             data = orinma.pca.cwm.values)
+
+AICcmodavg::aictab(cand.set = list(orinma.PC1.mod.Subr,
+                                   orinma.PC1.mod.Sm, 
+                                   orinma.PC1.mod.Pm,
+                                   orinma.PC1.mod.Sm.Subr,
+                                   orinma.PC1.mod.Pm.Subr),
+                   modnames = c("Subregion.PC1","Sm.PC1","Pm.PC1","Sm_Subregion.PC1","Pm_Subregion.PC1"))
+
+AICcmodavg::aictab(cand.set = list(orinma.PC2.mod.Subr,
+                                   orinma.PC2.mod.Sm, 
+                                   orinma.PC2.mod.Pm,
+                                   orinma.PC2.mod.Sm.Subr,
+                                   orinma.PC2.mod.Pm.Subr),
+                   modnames = c("Subregion.PC2","Sm.PC2","Pm.PC2","Sm_Subregion.PC2","Pm_Subregion.PC2"))
+
+AICcmodavg::aictab(cand.set = list(orinma.PC3.mod.Subr,
+                                   orinma.PC3.mod.Sm, 
+                                   orinma.PC3.mod.Pm,
+                                   orinma.PC3.mod.Sm.Subr,
+                                   orinma.PC3.mod.Pm.Subr),
+                   modnames = c("Subregion.PC3","Sm.PC3","Pm.PC3","Sm_Subregion.PC3","Pm_Subregion.PC3"))
+
+summary(orinma.PC1.mod.Sm.Subr) # 45.65%
+summary(orinma.PC2.mod.Pm.Subr) # 23.01%
+summary(orinma.PC3.mod.Sm.Subr) #  7.22%
+
+
+emtrends(orinma.PC1.mod.Sm.Subr, ~ subregion, var = "spp_richness") |>
+  as.data.frame() |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = 0.00640185, lty = 2, color = "#A1A1A1") +
+  geom_hline(yintercept = -0.00034308, lty = 3, color = "#A1A1A1") +
+  geom_hline(yintercept = 0.01314679, lty = 3, color = "#A1A1A1") +
+  geom_pointrange(aes(y = spp_richness.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(x = "Subregion",
+       y = "EMMs of `competitors` effect on PC1 (45.65%)", 
+       color = "Subregion", 
+       title = "Indo-Pacific") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+emtrends(orinma.PC2.mod.Pm.Subr, ~ subregion, var = "pred_richness") |>
+  as.data.frame() |>
+  ggplot(aes(x = subregion, color = subregion)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_hline(yintercept = -0.1770482, lty = 2, color = "#A1A1A1") +
+  geom_hline(yintercept = -0.2930345, lty = 3, color = "#A1A1A1") +
+  geom_hline(yintercept = -0.0610620, lty = 3, color = "#A1A1A1") +
+  geom_pointrange(aes(y = pred_richness.trend, ymin = lower.CL, ymax = upper.CL), 
+                  alpha = 0.8, size = 1) +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(x = "Subregion",
+       y = "EMMs of `predators` effect on PC2 (23.01%)", 
+       color = "Subregion", 
+       title = "Indo-Pacific") +
+  coord_flip() +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+## Figures mean per region PC1-PC2 Indopacific ####
+names(orinma.pca.cwm.values)
+
+orinma.pca.cwm.values |>
+  mutate(linetype = ifelse(subregion %in% c("Continental islands", 
+                                            "New Guinea"), "solid", "dashed")) |>
+  ggplot(aes(x = spp_richness, y = PC1, color = subregion, fill = subregion)) +
+    geom_point(alpha = 0.2) +
+  geom_smooth(aes(linetype = linetype), method = "lm", se = TRUE, alpha = 0.2, lwd = 1) +
+  scale_linetype_identity() +
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(x = "Non-predator species richness",
+       y = "PC1",
+       title = "Shift – Indo-Pacific") +
+  theme_classic() +
+  theme(legend.position = "none",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"),
+        strip.background = element_blank())
+
+
+orinma.pca.cwm.values |>
+  mutate(linetype = ifelse(subregion %in% c("Continental islands", 
+                                            "Andaman & Nicobar",
+                                            "New Guinea"), "dashed", "solid")) |> 
+  ggplot(aes(x = pred_richness, y = PC2, color = subregion, fill = subregion)) +
+    geom_point(alpha = 0.2) +
+  geom_smooth(aes(linetype = linetype), method = "lm", se = TRUE, alpha = 0.2, lwd = 1) +
+  scale_linetype_identity() +
+  scale_fill_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  scale_color_manual(values = c("#A1A1A1",
+                               "#663171",
+                               
+                               "#BA3841",
+                               "#DF5C2D",
+                               "#E6824F",
+                               "#B7917F",
+                               "#0C7156")) +
+  labs(x = "Predator species richness",
+       y = "PC2") +
+  theme_classic() +
+  theme(legend.position = "none",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"),
+        strip.background = element_blank())
+
+
+# Define new labels
+PC_labels_orinma <- c("PC1" = " PC1\n(45.65%)",
+                     "PC2" = "PC2\n(23.01%)")
+
+
+Shift_Region_orinma <- orinma.pca.cwm.values |>
+  dplyr::select(cell, Meta_Archipelago, region, subregion, fig_group, 
+                spp_richness, pred_richness, PC1, PC2) |>
+  pivot_longer(cols = c(PC1, PC2)) |>
+  # mutate(linetype = case_when(
+  #   # PC1 rules
+  #   name == "PC1" & subregion %in% c("Mainland", "Lesser Antilles (Kalinago)", "Continental islands") ~ "solid",
+  #   name == "PC1" & subregion %in% c("Bahamas (Lucayan)", "Greater Antilles") ~ "dashed",
+  #   
+  #   # PC2 rules
+  #   name == "PC2" & subregion %in% c("Mainland", "Continental islands", "Greater Antilles") ~ "solid",
+  #   name == "PC2" & subregion %in% c( "Lesser Antilles (Kalinago)", "Bahamas (Lucayan)") ~ "dashed",
+  #   
+  #   # # PC3 rules
+  #   # name == "PC3" & subregion == "Mainland" ~ "solid",
+  #   # name == "PC3" & subregion %in% c("Continental islands", "Bahamas (Lucayan)", "Lesser Antilles (Kalinago)", "Greater Antilles") ~ "dashed",
+  #   
+  #   TRUE ~ "solid"  # fallback
+  # )) |>
+  ggplot(aes(x = spp_richness,
+             y = value,
+             fill = subregion,
+             color = subregion)) +
+  facet_wrap(~name, scales = "free_y", ncol = 1, 
+             labeller = as_labeller(PC_labels_orinma)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(aes(linetype = linetype), method = "lm", se = TRUE, alpha = 0.2, lwd = 1) +
+  scale_linetype_identity() +
+  scale_fill_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  scale_color_manual(values = c("#A1A1A1", "#663171", "#aadce0", "#376795", "#ef8a47")) +
+  labs(x = "Species richness",
+       y = "Score",
+       title = "Shift – Caribbean") +
+  theme_classic() +
+  theme(legend.position = "left",
+        panel.background =element_rect(fill="transparent",colour="black"),
+        panel.grid.minor=element_blank(),
+        panel.border=element_rect(fill=NA,colour="grey50"),
+        strip.background = element_blank())
+
+Shift_Region_Carib
+```
+
+
+## How different are the results using presence only data?
+
+```{r}
+# global functional traits (after imputation)
+functraits_global <- readRDS("FunctionalTraits/birds_functraits_global_imputed.RDS") 
+
+spp_cell_df <- readRDS("results_funbiog/Species_in_cells_MetaArchipelagos.RDS")
+
+spp_cell_df_func <- spp_cell_df |>
+  left_join(functraits_global) |>
+  group_by(cell, scientific_name) |>
+  # mean abundance per species per cell
+  mutate(mu_hat = mean(mu_hat, na.rm = TRUE),
+         omega_hat = mean(omega_hat, na.rm = TRUE)) |>
+  as.data.frame() 
+
+names(spp_cell_df_func)
+```
+
+From having for every trait $j$ and sampling unit (cell) $m$ the cell-level trait means as community-weighted mean:
+
+$$
+\textit{CWM}_{j,m} = \sum_s^{S_m} r_{s,m} t_{s,j}
+$$
+
+\noindent where $S_m$ is the number of species per cell $m$, $r_{s,m}$ is the relative abundance of species $s$ in plot $m$ (computed from the sum of estimated log-abundance mean at stationarity $\mu$), and $t_{s,j}$ is the mean value of species $s$ for trait $j$, achieved with the function `weighted.mean()` in `R`. For presence-only data (every species gets the same weight $r_{s,m} = \frac{1}{S_m}$) the approach could be:
+
+$$
+\textit{CWM}_{j,m}^{\text{presence}} = \frac{1}{S_m} \sum_{s}^{S_m} t_{s,m}
+$$
+
+The new computation is
+
+```{r}
+# Calculating the CWM and CWV
+
+islands_cwm_mu_summary2 <- spp_cell_df_func |>
+  group_by(cell, Meta.Archipelago, subregion) |>
+  mutate(total_mu_hat = sum(mu_hat)) |> 
+  ungroup() |>
+  mutate(rel_mu = 1) |> 
+  group_by(cell, Meta.Archipelago, subregion) |> 
+  summarise(spp_richness = n(),
+            pred_richness = sum(`Diet - Vertebrate` > 5, na.rm = TRUE),
+          # CWM
+            `body mass` = weighted.mean(`log (Body mass)`, rel_mu, na.rm = T),
+            `hand wing index` = weighted.mean(`Hand Wing Index`, rel_mu, na.rm = T),
+            `tarsus length` = weighted.mean(`Tarsus length`, rel_mu, na.rm = T),
+            `wing length` = weighted.mean(`Wing length`, rel_mu, na.rm = T),
+            `beak length nar` = weighted.mean(`Beak length (nares)`, rel_mu, na.rm = T), 
+            `beak length cul` = weighted.mean(`Beak length (culmen)`, rel_mu, na.rm = T), 
+            `beak width` = weighted.mean(`Beak width`, rel_mu, na.rm = T),
+            `beak depth` = weighted.mean(`Beak depth`, rel_mu, na.rm = T), 
+            `diet breadth` = weighted.mean(`Diet breadth`, rel_mu, na.rm = T), 
+            `habitat breadth` = weighted.mean(`Habitat breadth`, rel_mu, na.rm = T),
+            `eco speci index` = weighted.mean(`EcoloSpeciIndex`, rel_mu, na.rm = T),
+            `verticality` = weighted.mean(`Verticality index`, rel_mu, na.rm = T),
+            `elevation range` = weighted.mean(`Elevational range`, rel_mu, na.rm = T),
+            `clutch size` = weighted.mean(`Clutch size`, rel_mu, na.rm = T),
+            `n broods` = weighted.mean(`Number of broods`, rel_mu, na.rm = T),
+            `nest locat breadth` = weighted.mean(`Nest location breadth`, rel_mu, na.rm = T),
+            `nest type breadth` = weighted.mean(`Nest type breadth`, rel_mu, na.rm = T),
+          # CWM_presence
+            `body mass` = `body mass` / spp_richness,
+            `hand wing index` = `hand wing index` / spp_richness,
+            `tarsus length` = `tarsus length` / spp_richness,
+            `wing length` = `wing length` / spp_richness,
+            `beak length nar` = `beak length nar` / spp_richness, 
+            `beak length cul` = `beak length cul` / spp_richness, 
+            `beak width` = `beak width` / spp_richness,
+            `beak depth` = `beak depth` / spp_richness, 
+            `diet breadth` = `diet breadth` / spp_richness, 
+            `habitat breadth` = `habitat breadth` / spp_richness,
+            `eco speci index` = `eco speci index` / spp_richness,
+            `verticality` = `verticality` / spp_richness,
+            `elevation range` = `elevation range` / spp_richness,
+            `clutch size` = `clutch size` / spp_richness,
+            `n broods` = `n broods` / spp_richness,
+            `nest locat breadth` = `nest locat breadth` / spp_richness,
+            `nest type breadth` = `nest type breadth` / spp_richness) |>
+  as.data.frame()
+```
+
+Group for figure
+
+```{r}
+islands_cwm_mu2 <- islands_cwm_mu_summary2 |>
+  mutate(subregion = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Caribbean - Continental islands", "Continental islands",
+                     ifelse(subregion == "Caribbean - Greater Antilles", "Greater Antilles",
+                     ifelse(subregion == "Caribbean - Kalinago", "Lesser Antilles (Kalinago)",
+                     ifelse(subregion == "Caribbean - Lucayan", "Bahamas (Lucayan)",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Andaman & Nicobar", "Andaman & Nicobar",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Continental islands", "Continental islands",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Philippines", "Philippines",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Sunda islands", "Sunda islands",
+                     ifelse(subregion == "Oriental-Indo-Malayan - Wallacea", "Wallacea",
+                     ifelse(subregion == "Papuan-Melanesian - Bismarcks", "Bismarcks",
+                     ifelse(subregion == "Papuan-Melanesian - Papua", "Papua",
+                     ifelse(subregion == "Papuan-Melanesian - Solomons", "Solomons",
+                     ifelse(subregion == "Papuan-Melanesian - Vanuatu", "Vanuatu",
+                     subregion)))))))))))))),
+         region = ifelse(Meta.Archipelago == "Indo.Pacific", "Indo Pacific",
+                                   "Caribbean"),
+         fig_group = ifelse(subregion == "Mainland", "Mainland",
+                     ifelse(subregion == "Continental islands", "Islands",
+                     ifelse(subregion == "Greater Antilles", "Islands",
+                     ifelse(subregion == "Lesser Antilles (Kalinago)", "Islands",
+                     ifelse(subregion == "Bahamas (Lucayan)", "Islands",
+                     ifelse(subregion == "Andaman & Nicobar", "Islands",
+                     ifelse(subregion == "Philippines", "Islands",
+                     ifelse(subregion == "Sunda islands", "Islands",
+                     ifelse(subregion == "Wallacea", "Islands",
+                     ifelse(subregion == "Bismarcks", "Islands",
+                     ifelse(subregion == "Papua", "Islands",
+                     ifelse(subregion == "Solomons", "Islands",
+                     ifelse(subregion == "Vanuatu", "Islands",
+                     subregion))))))))))))))
+
+names(islands_cwm_mu2)
+
+```
+
+```{r}
+caribbean_cwm2 <- islands_cwm_mu2 |>
+  filter(Meta.Archipelago %in% "Caribbean") |>
+  # bring back the mean value of longitude for each cell
+  left_join(spp_cell_df |> 
+              dplyr::select(cell,longitude, latitude) |> 
+              group_by(cell) |> 
+              summarize(longitude = mean(longitude),
+                        latitude = mean(latitude))) |>
+  filter(latitude < 24 | longitude > -79.5, 
+         spp_richness >= 15) # 1st Q of species richness in the Caribbean
+
+names(caribbean_cwm2)
+
+caribbean_cwm2[,c(3, 6:22)] |>
+  pivot_longer(cols = !c(subregion), names_to = "Trait",values_to = "CWM") |>
+  ggplot(aes(x = scale(log10(CWM)))) + geom_histogram() +facet_wrap(~Trait, scales = "free")+theme_classic()
+
+funspaceDim(scale(log10(caribbean_cwm2[,c(6:22)]))) # 4 dimensions
+
+carib.pca.cwm2 <- prcomp(scale(log10(caribbean_cwm2[,c(6:22)])))
+carib.pca.cwm.values2 <- data.frame(cell = caribbean_cwm2$cell,
+                               Meta_Archipelago = caribbean_cwm2$Meta.Archipelago,
+                               region = caribbean_cwm2$region,
+                               subregion = caribbean_cwm2$subregion,
+                               fig_group = caribbean_cwm2$fig_group,
+                               spp_richness = caribbean_cwm2$spp_richness,
+                               pred_richness = caribbean_cwm2$pred_richness,
+                               carib.pca.cwm2$x)
+
+carib.pca.cwm.loadings2 <- data.frame(Variables = rownames(carib.pca.cwm2$rotation), 
+                                     carib.pca.cwm2$rotation)
+
+aload.car <- abs(carib.pca.cwm$rotation)
+View(sweep(aload.car, 2, colSums(aload.car), "/"))
+
+aload.car2 <- abs(carib.pca.cwm2$rotation)
+View(sweep(aload.car2, 2, colSums(aload.car2), "/"))
+
+summary(carib.pca.cwm)
+summary(carib.pca.cwm2)
+
+```
+
+```{r}
+library(plotly)
+p
+
+# Define your palette
+subregion_colors <- c(
+  "Mainland"            = "#A1A1A1",
+  "Continental islands" = "#663171",
+  "Lesser Antilles (Kalinago)"     = "#aadce0",
+  "Greater Antilles"    = "#376795",
+  "Bahamas (Lucayan)"             = "#ef8a47"
+)
+
+# Scale richness to a reasonable marker size range
+size_scale2 <- scales::rescale(carib.pca.cwm.values2$spp_richness, to = c(4, 18))
+
+# Base scatter plot with relative size
+p2 <- plot_ly(
+  data = carib.pca.cwm.values2,
+  x = ~PC1, y = ~PC2, z = ~PC3,
+  type = "scatter3d", mode = "markers",
+  color = ~subregion,
+  colors = subregion_colors,
+  marker = list(
+    size = size_scale2,   # relative size by richness
+    opacity = 0.5
+  ),
+  text = ~paste("Richness:", spp_richness) # hover info
+)
+
+# Add loading vectors for top contributors
+carib.pca.cwm.loadings2$contrib <- rowSums(carib.pca.cwm.loadings2[, c("PC1","PC2","PC3")]^2)
+top_vars2 <- carib.pca.cwm.loadings2[order(-carib.pca.cwm.loadings2$contrib), ][1:10, ]
+
+for (i in seq_len(nrow(top_vars2))) {
+  v <- top_vars2[i, ]
+  
+  # Arrow (line only)
+  p2 <- add_trace(
+    p2,
+    x = c(0, v$PC1 * 2),
+    y = c(0, v$PC2 * 2),
+    z = c(0, v$PC3 * 2),
+    type = "scatter3d", mode = "lines",
+    line = list(color = "black", width = 4),
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+  
+  # Label (only at arrow tip)
+  p2 <- add_trace(
+    p2,
+    x = v$PC1 * 2,
+    y = v$PC2 * 2,
+    z = v$PC3 * 2,
+    type = "scatter3d", mode = "text",
+    text = v$Variables,
+    textposition = "top middle",
+    showlegend = FALSE,
+    inherit = FALSE
+  )
+}
+
+p2
 ```
